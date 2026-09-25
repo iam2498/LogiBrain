@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  :root {
+    --primary: #4F46E5;
+    --secondary: #14B8A6;
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --bg-main: #FFFFFF;
+    --bg-section: #F8FAFC;
+    --text-main: #0F172A;
+    --text-muted: #64748B;
+    --border: #E2E8F0;
+    --font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  }
+  
+  * { box-sizing: border-box; }
+  
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-family);
+    color: var(--text-main);
+    background-color: var(--bg-main);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .header {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: white;
+    padding: 24px 32px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    position: relative;
+    page-break-inside: avoid;
+  }
+  .header h1 { margin: 0; font-size: 24px; }
+  .header .subtitle { font-size: 12px; opacity: 0.8; margin-top: 4px; }
+  .header .date { position: absolute; top: 24px; right: 32px; font-size: 12px; opacity: 0.9; }
+  
+  .route-banner {
+    margin-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .route-banner .route { font-size: 20px; font-weight: bold; }
+  .badge {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+  .badge-COMPLETED { background: var(--success); color: white; }
+  .badge-ACTIVE { background: var(--warning); color: white; }
+  .badge-CANCELLED { background: var(--danger); color: white; }
+
+  .kpi-grid {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .kpi-card {
+    flex: 1;
+    background: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    page-break-inside: avoid;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+  }
+  .kpi-success { border-top: 4px solid var(--success); }
+  .kpi-danger { border-top: 4px solid var(--danger); }
+  .kpi-primary { border-top: 4px solid var(--primary); }
+  .kpi-secondary { border-top: 4px solid var(--secondary); }
+  
+  .kpi-title { font-size: 10px; color: var(--text-muted); font-weight: bold; text-transform: uppercase; margin-bottom: 8px; }
+  .kpi-value { font-size: 20px; font-weight: bold; margin-bottom: 4px; }
+  .kpi-sub { font-size: 10px; color: var(--text-muted); }
+  
+  .info-grid {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .info-card {
+    flex: 1;
+    background: var(--bg-section);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    page-break-inside: avoid;
+  }
+  .info-card h3 { margin: 0 0 12px 0; font-size: 12px; color: var(--text-main); text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .info-row { display: flex; margin-bottom: 8px; font-size: 11px; }
+  .info-label { width: 90px; color: var(--text-muted); font-weight: bold; }
+  .info-value { flex: 1; font-weight: 500; }
+  .plate { font-family: monospace; background: white; border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; }
+  
+  .driver-card {
+    background: var(--bg-section);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    page-break-inside: avoid;
+  }
+  .avatar {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: bold;
+  }
+  .driver-info h3 { margin: 0 0 4px 0; font-size: 14px; }
+  .driver-info p { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+  .finance-section {
+    background: var(--bg-section);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    display: flex;
+    gap: 32px;
+    page-break-inside: avoid;
+  }
+  .finance-left { flex: 1; }
+  .finance-right { width: 250px; border-left: 1px solid var(--border); padding-left: 24px; }
+  
+  h2.section-title { font-size: 16px; margin: 0 0 16px 0; }
+
+  .donut-chart {
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: conic-gradient({{{donutGradient}}});
+    position: relative;
+    display: inline-block;
+  }
+  .donut-hole {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 60px; height: 60px;
+    background: var(--bg-section);
+    border-radius: 50%;
+  }
+  
+  .legend {
+    display: inline-flex; flex-direction: column; gap: 8px; vertical-align: top; margin-left: 24px; margin-top: 12px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 10px; }
+  .legend-color { width: 10px; height: 10px; border-radius: 50%; }
+  
+  .mini-bar-container { margin-bottom: 12px; }
+  .mini-bar-title { font-size: 10px; font-weight: bold; color: var(--text-muted); margin-bottom: 4px; }
+  .mini-bar-wrapper { display: grid; grid-template-columns: 1fr 70px; gap: 8px; }
+  .mini-bar { height: 12px; border-radius: 2px; }
+  .mini-bar-val { font-size: 10px; font-weight: bold; white-space: nowrap; text-align: right; align-self: center; }
+  
+  .table-container { page-break-inside: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  th { text-align: left; padding: 10px 12px; background: var(--bg-section); color: var(--text-muted); font-weight: bold; border-bottom: 2px solid var(--border); }
+  td { padding: 12px; border-bottom: 1px solid var(--border); }
+  tbody tr:nth-child(even) { background-color: #FAFAFA; }
+  .text-right { text-align: right; }
+  .expense-desc { max-width: 200px; color: var(--text-muted); }
+  .expense-desc.empty { font-style: italic; opacity: 0.6; }
+  .cat-pill {
+    display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 9px; font-weight: bold; color: white;
+  }
+  .table-total { font-size: 12px; font-weight: bold; border-top: 2px solid var(--border); }
+  .table-total td { padding-top: 16px; padding-bottom: 16px; }
+
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>FleetFlow</h1>
+    <div class="subtitle">Owner Portal &bull; Trip Report</div>
+    <div class="date">Generated: {{generatedDate}}</div>
+    
+    <div class="route-banner">
+      <div class="route">{{trip.source}} &rarr; {{trip.destination}}</div>
+      <div class="badge badge-{{trip.status}}">{{trip.status}}</div>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card kpi-success">
+      <div class="kpi-title">Actual Revenue</div>
+      <div class="kpi-value">{{actualRev}}</div>
+      <div class="kpi-sub">Expected: {{expectedRev}}</div>
+    </div>
+    <div class="kpi-card kpi-danger">
+      <div class="kpi-title">Total Expenses</div>
+      <div class="kpi-value">{{totalExpenses}}</div>
+      <div class="kpi-sub">{{expenseCount}} records</div>
+    </div>
+    <div class="kpi-card kpi-primary">
+      <div class="kpi-title">Net Profit</div>
+      <div class="kpi-value" style="color: {{#if isLoss}}var(--danger){{else}}inherit{{/if}}">
+        {{#if isLoss}}&darr; {{/if}}{{netProfit}}
+      </div>
+      <div class="kpi-sub">{{#if isLoss}}Loss{{else}}Profit{{/if}}</div>
+    </div>
+    <div class="kpi-card kpi-secondary">
+      <div class="kpi-title">Profit Margin</div>
+      <div class="kpi-value">{{marginPct}}%</div>
+      <div class="kpi-sub">Of actual revenue</div>
+    </div>
+  </div>
+
+  <div class="info-grid">
+    <div class="info-card">
+      <h3>Trip Overview</h3>
+      <div class="info-row"><div class="info-label">Trip ID</div><div class="info-value" style="font-family: monospace">{{trip._id}}</div></div>
+      <div class="info-row"><div class="info-label">Created</div><div class="info-value">{{createdDate}}</div></div>
+      <div class="info-row"><div class="info-label">Completed</div><div class="info-value">{{completedDate}}</div></div>
+      <div class="info-row"><div class="info-label">Duration</div><div class="info-value">{{durationStr}}</div></div>
+    </div>
+    <div class="info-card">
+      <h3>Truck Details</h3>
+      <div class="info-row"><div class="info-label">Registration</div><div class="info-value"><span class="plate">{{truck.registrationNumber}}</span></div></div>
+      <div class="info-row"><div class="info-label">Type</div><div class="info-value">{{truck.truckType}}</div></div>
+      <div class="info-row"><div class="info-label">Capacity</div><div class="info-value">{{truck.capacityStr}}</div></div>
+    </div>
+  </div>
+
+  <div class="driver-card">
+    <div class="avatar">{{driver.initials}}</div>
+    <div class="driver-info">
+      <h3>{{driver.name}}</h3>
+      <p>Lic: {{driver.licenseNumber}} &bull; Ph: {{driver.phone}}</p>
+    </div>
+  </div>
+
+  <div class="finance-section">
+    <div class="finance-left">
+      <h2 class="section-title">Financial Analytics</h2>
+      {{#if hasExpenses}}
+        <div class="donut-chart">
+          <div class="donut-hole"></div>
+        </div>
+        <div class="legend">
+          {{#each legendItems}}
+            <div class="legend-item">
+              <div class="legend-color" style="background: {{this.color}}"></div>
+              <div>{{this.category}} ({{this.amount}})</div>
+            </div>
+          {{/each}}
+        </div>
+      {{else}}
+        <p style="color: var(--text-muted); font-size: 12px; font-style: italic; margin-top: 24px;">No expenses recorded.</p>
+      {{/if}}
+    </div>
+    <div class="finance-right">
+      <div class="mini-bar-container">
+        <div class="mini-bar-title">Revenue</div>
+        <div class="mini-bar-wrapper">
+          <div style="display: flex; align-items: center;"><div class="mini-bar" style="width: calc(max({{barRevPct}}%, 2px)); background: var(--success)"></div></div>
+          <div class="mini-bar-val">{{actualRev}}</div>
+        </div>
+      </div>
+      <div class="mini-bar-container">
+        <div class="mini-bar-title">Expenses</div>
+        <div class="mini-bar-wrapper">
+          <div style="display: flex; align-items: center;"><div class="mini-bar" style="width: calc(max({{barExpPct}}%, 2px)); background: var(--danger)"></div></div>
+          <div class="mini-bar-val">{{totalExpenses}}</div>
+        </div>
+      </div>
+      <div class="mini-bar-container">
+        <div class="mini-bar-title">Profit</div>
+        <div class="mini-bar-wrapper">
+          <div style="display: flex; align-items: center;"><div class="mini-bar" style="width: calc(max({{barProfPct}}%, 2px)); background: {{#if isLoss}}var(--danger){{else}}var(--primary){{/if}}"></div></div>
+          <div class="mini-bar-val">{{netProfit}}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-container">
+    <h2 class="section-title" style="margin-bottom: 12px;">Itemized Expenses</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>DATE</th>
+          <th>CATEGORY</th>
+          <th>DESCRIPTION</th>
+          <th class="text-right">AMOUNT</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each expensesList}}
+          <tr>
+            <td>{{this.dateStr}}</td>
+            <td><span class="cat-pill" style="background: {{this.color}}">{{this.category}}</span></td>
+            <td>
+              {{#if this.hasDesc}}
+                <div class="expense-desc">{{this.description}}</div>
+              {{else}}
+                <div class="expense-desc empty">No description</div>
+              {{/if}}
+            </td>
+            <td class="text-right font-bold">{{this.amountStr}}</td>
+          </tr>
+        {{/each}}
+        {{#if hasExpenses}}
+          <tr class="table-total">
+            <td colspan="3" class="text-right">TOTAL EXPENSES</td>
+            <td class="text-right" style="color: var(--danger)">{{totalExpenses}}</td>
+          </tr>
+        {{else}}
+          <tr>
+            <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 48px;">No itemized expenses found.</td>
+          </tr>
+        {{/if}}
+      </tbody>
+    </table>
+  </div>
+
+</body>
+</html>
