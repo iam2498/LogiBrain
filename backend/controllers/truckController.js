@@ -29,19 +29,19 @@ exports.getTrucks = async (req, res, next) => {
       .populate({ path: "currentDriverId", populate: { path: "userId", select: "name" } })
       .sort({ createdAt: -1 });
     
-    // Resolve dynamic operational status
     const activeTrips = await Trip.find({
       truckId: { $in: trucks.map(t => t._id) },
-      status: { $in: ["PENDING", "ACTIVE", "DRIVER_ENDED"] }
+      status: "ON_TRIP"
     });
     const activeTruckIds = new Set(activeTrips.map(trip => trip.truckId.toString()));
     
     const resolvedTrucks = trucks.map(truck => {
       let status = truck.status;
+      if (status === "ACTIVE") status = "AVAILABLE";
       if (activeTruckIds.has(truck._id.toString())) {
         status = "ON_TRIP";
       } else if (status === "ON_TRIP") {
-         status = "ACTIVE"; // Fix stale ON_TRIP
+         status = "AVAILABLE"; // Fix stale ON_TRIP
       }
       return { ...truck.toObject(), status };
     });
@@ -62,14 +62,15 @@ exports.getTruckById = async (req, res, next) => {
 
     const activeTrip = await Trip.findOne({
       truckId: truck._id,
-      status: { $in: ["PENDING", "ACTIVE", "DRIVER_ENDED"] }
+      status: "ON_TRIP"
     });
 
     let status = truck.status;
+    if (status === "ACTIVE") status = "AVAILABLE";
     if (activeTrip) {
       status = "ON_TRIP";
     } else if (status === "ON_TRIP") {
-      status = "ACTIVE";
+      status = "AVAILABLE";
     }
 
     res.json({ success: true, data: { ...truck.toObject(), status } });
@@ -94,14 +95,15 @@ exports.updateTruck = async (req, res, next) => {
 
     const activeTrip = await Trip.findOne({
       truckId: truck._id,
-      status: { $in: ["PENDING", "ACTIVE", "DRIVER_ENDED"] }
+      status: "ON_TRIP"
     });
 
     let status = truck.status;
+    if (status === "ACTIVE") status = "AVAILABLE";
     if (activeTrip) {
       status = "ON_TRIP";
     } else if (status === "ON_TRIP") {
-      status = "ACTIVE";
+      status = "AVAILABLE";
     }
 
     res.json({ success: true, data: { ...truck.toObject(), status } });
@@ -126,14 +128,15 @@ exports.updateTruckStatus = async (req, res, next) => {
 
     const activeTrip = await Trip.findOne({
       truckId: truck._id,
-      status: { $in: ["PENDING", "ACTIVE", "DRIVER_ENDED"] }
+      status: "ON_TRIP"
     });
 
     let resolvedStatus = truck.status;
+    if (resolvedStatus === "ACTIVE") resolvedStatus = "AVAILABLE";
     if (activeTrip) {
       resolvedStatus = "ON_TRIP";
     } else if (resolvedStatus === "ON_TRIP") {
-      resolvedStatus = "ACTIVE";
+      resolvedStatus = "AVAILABLE";
     }
 
     res.json({ success: true, data: { ...truck.toObject(), status: resolvedStatus } });

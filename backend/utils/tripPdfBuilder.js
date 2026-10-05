@@ -71,7 +71,7 @@ exports.generateTripPdf = async (trip, expenses, res) => {
     const isLoss = netProfitAmt < 0;
 
     let durationStr = "N/A";
-    if (trip.status === "ACTIVE" || !trip.actualEndDate) {
+    if (trip.status === "ON_TRIP" || trip.status === "ACTIVE" || !trip.actualEndDate) {
       durationStr = "In progress";
     } else if (trip.actualEndDate && trip.createdAt) {
       const ms = Math.abs(new Date(trip.actualEndDate) - new Date(trip.createdAt));
@@ -143,7 +143,7 @@ exports.generateTripPdf = async (trip, expenses, res) => {
       isLoss,
       marginPct,
       createdDate: formatDateTime(trip.createdAt),
-      completedDate: trip.status === "ACTIVE" || !trip.actualEndDate ? "In progress" : formatDateTime(trip.actualEndDate),
+      completedDate: trip.status === "ON_TRIP" || trip.status === "ACTIVE" || !trip.actualEndDate ? "In progress" : formatDateTime(trip.actualEndDate),
       durationStr,
       truck: {
         registrationNumber: trip.truckId?.registrationNumber || "N/A",

@@ -18,8 +18,8 @@ const tripSchema = new mongoose.Schema(
     actualEndDate: { type: Date },
     status: {
       type: String,
-      enum: ["PENDING", "ACTIVE", "DRIVER_ENDED", "COMPLETED", "CANCELLED"],
-      default: "PENDING",
+      enum: ["ON_TRIP", "COMPLETED", "CANCELLED"],
+      default: "ON_TRIP",
     },
   },
   { timestamps: true }

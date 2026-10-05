@@ -8,7 +8,7 @@ const truckSchema = new mongoose.Schema(
     model: { type: String },
     capacity: { type: String }, // e.g. "25 Ton"
     purchaseDate: { type: Date },
-    status: { type: String, enum: ["ACTIVE", "INACTIVE", "MAINTENANCE", "ON_TRIP"], default: "ACTIVE" },
+    status: { type: String, enum: ["AVAILABLE", "ON_TRIP", "MAINTENANCE"], default: "AVAILABLE" },
     currentDriverId: { type: mongoose.Schema.Types.ObjectId, ref: "Driver" },
     imageUrl: { type: String },
   },

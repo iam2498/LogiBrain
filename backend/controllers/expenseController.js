@@ -9,8 +9,8 @@ exports.createExpense = async (req, res, next) => {
     const trip = await Trip.findOne({ _id: parsedData.tripId, ...req.scopedQuery });
     if (!trip) return res.status(404).json({ success: false, message: "Trip not found or access denied" });
 
-    if (trip.status !== "ACTIVE") {
-      return res.status(400).json({ success: false, message: "Expenses can only be added to ACTIVE trips" });
+    if (trip.status !== "ON_TRIP" && trip.status !== "ACTIVE") {
+      return res.status(400).json({ success: false, message: "Expenses can only be added to trips in progress" });
     }
 
     let receiptUrl = null;

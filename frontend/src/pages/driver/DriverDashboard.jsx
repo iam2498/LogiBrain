@@ -41,7 +41,7 @@ export default function DriverDashboard() {
       try {
         const [meRes, tripsRes] = await Promise.all([
           axiosClient.get("/auth/me"),
-          axiosClient.get("/trips?status=ACTIVE") // Only get active trips for dashboard
+          axiosClient.get("/trips?status=ON_TRIP") // Only get trips in progress for dashboard
         ]);
         setProfile(meRes.data.data);
         setMyTrips(tripsRes.data.data);
@@ -69,7 +69,7 @@ export default function DriverDashboard() {
       await axiosClient.patch(`/trips/${tripId}/end`);
       alert("Trip end requested successfully. Waiting for owner confirmation.");
       // Refresh
-      const tripsRes = await axiosClient.get("/trips?status=ACTIVE");
+      const tripsRes = await axiosClient.get("/trips?status=ON_TRIP");
       setMyTrips(tripsRes.data.data);
     } catch (error) {
       alert("Failed to end trip: " + error.response?.data?.message);
@@ -179,11 +179,11 @@ export default function DriverDashboard() {
                 <p className="text-[14px] md:text-[16px] text-blue-100 font-medium opacity-90">Stay safe and drive carefully today.</p>
               </div>
               <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] md:text-[13px] font-bold border backdrop-blur-md shadow-sm self-start md:self-auto
-                ${profile?.driverInfo?.status === "ACTIVE" 
+                ${profile?.driverInfo?.status === "ON_TRIP" || profile?.driverInfo?.status === "ACTIVE"
                   ? "bg-green-500/20 text-green-100 border-green-400/30" 
                   : "bg-amber-500/20 text-amber-100 border-amber-400/30"}`}>
-                <span className={`w-2 h-2 rounded-full ${profile?.driverInfo?.status === "ACTIVE" ? "bg-green-400 animate-pulse" : "bg-amber-400"}`}></span>
-                {profile?.driverInfo?.status || "INACTIVE"}
+                <span className={`w-2 h-2 rounded-full ${profile?.driverInfo?.status === "ON_TRIP" || profile?.driverInfo?.status === "ACTIVE" ? "bg-green-400 animate-pulse" : "bg-amber-400"}`}></span>
+                {profile?.driverInfo?.status === 'ON_TRIP' || profile?.driverInfo?.status === 'ACTIVE' ? 'On Trip' : profile?.driverInfo?.status === 'AVAILABLE' ? 'Available' : profile?.driverInfo?.status === 'ON_LEAVE' ? 'On Leave' : profile?.driverInfo?.status || "INACTIVE"}
               </span>
             </div>
             
@@ -337,8 +337,8 @@ export default function DriverDashboard() {
               <div className="w-16 h-16 md:w-20 md:h-20 bg-surface-container-low rounded-full flex items-center justify-center mb-4">
                 <span className="material-symbols-outlined text-[32px] md:text-[40px] text-on-surface-variant">check_circle</span>
               </div>
-              <h3 className="text-[20px] md:text-[22px] font-bold text-on-surface mb-2">No Active Trips</h3>
-              <p className="text-[14px] md:text-[15px] text-on-surface-variant max-w-[400px]">You're all caught up! There are no active trips assigned to you at the moment. Take a rest.</p>
+              <h3 className="text-[20px] md:text-[22px] font-bold text-on-surface mb-2">No Trips In Progress</h3>
+              <p className="text-[14px] md:text-[15px] text-on-surface-variant max-w-[400px]">You're all caught up! There are no trips currently in progress assigned to you at the moment. Take a rest.</p>
             </div>
           )}
         </section>

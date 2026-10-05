@@ -9,7 +9,7 @@ const driverSchema = new mongoose.Schema(
     address: { type: String },
     emergencyContact: { type: String },
     imageUrl: { type: String },
-    status: { type: String, enum: ["ACTIVE", "INACTIVE", "ON_TRIP"], default: "ACTIVE" },
+    status: { type: String, enum: ["AVAILABLE", "ON_TRIP", "ON_LEAVE"], default: "AVAILABLE" },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

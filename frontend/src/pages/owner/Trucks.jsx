@@ -263,9 +263,9 @@ export default function Trucks() {
                 <div className="bg-white p-4 rounded-xl border border-outline-variant/50 shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-emerald-500">
                   <div className="flex items-center gap-2 mb-2 text-on-surface-variant">
                     <span className="material-symbols-outlined text-[16px] text-emerald-600">check_circle</span>
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Active</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Available</span>
                   </div>
-                  <div className="text-[24px] font-bold text-on-surface">{trucks.filter(t => t.status === 'ACTIVE').length}</div>
+                  <div className="text-[24px] font-bold text-on-surface">{trucks.filter(t => t.status === 'AVAILABLE').length}</div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-outline-variant/50 shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-blue-500">
                   <div className="flex items-center gap-2 mb-2 text-on-surface-variant">
@@ -287,7 +287,7 @@ export default function Trucks() {
               <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => setFilter('ALL')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'ALL' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-surface-container-low text-on-surface-variant border border-outline-variant/50 hover:bg-surface-variant'}`}>All</button>
-                  <button onClick={() => setFilter('ACTIVE')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'ACTIVE' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'}`}>Active</button>
+                  <button onClick={() => setFilter('AVAILABLE')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'AVAILABLE' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'}`}>Available</button>
                   <button onClick={() => setFilter('ON_TRIP')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'ON_TRIP' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'}`}>On Trip</button>
                   <button onClick={() => setFilter('MAINTENANCE')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'MAINTENANCE' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100'}`}>Maintenance</button>
                 </div>
@@ -323,9 +323,9 @@ export default function Trucks() {
                             <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full border border-blue-200 flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> On Trip
                             </span>
-                          ) : truck.status === 'ACTIVE' ? (
+                          ) : truck.status === 'AVAILABLE' ? (
                             <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Available
                             </span>
                           ) : (
                             <span className="bg-red-50 text-red-700 text-[10px] font-bold px-2 py-1 rounded-full border border-red-200 flex items-center gap-1">
@@ -345,7 +345,7 @@ export default function Trucks() {
                               </div>
                             )}
                             {truck.status && (
-                              <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-surface flex items-center justify-center ${truck.status === 'ACTIVE' ? 'bg-emerald-500' : truck.status === 'ON_TRIP' ? 'bg-blue-500' : 'bg-red-500'}`}></div>
+                              <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-surface flex items-center justify-center ${truck.status === 'AVAILABLE' ? 'bg-emerald-500' : truck.status === 'ON_TRIP' ? 'bg-blue-500' : 'bg-red-500'}`}></div>
                             )}
                           </div>
                           <div>
@@ -387,7 +387,7 @@ export default function Trucks() {
                                 <span className="material-symbols-outlined text-[40px]">local_shipping</span>
                               </div>
                             )}
-                            <div className={`absolute bottom-1 right-1 ${selectedTruck.status === 'ACTIVE' ? 'bg-emerald-500' : selectedTruck.status === 'ON_TRIP' ? 'bg-blue-500' : 'bg-red-500'} w-5 h-5 rounded-full border-2 border-white flex items-center justify-center`}></div>
+                            <div className={`absolute bottom-1 right-1 ${selectedTruck.status === 'AVAILABLE' ? 'bg-emerald-500' : selectedTruck.status === 'ON_TRIP' ? 'bg-blue-500' : 'bg-red-500'} w-5 h-5 rounded-full border-2 border-white flex items-center justify-center`}></div>
                           </div>
                           <div className="flex gap-2 relative">
                             <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface hover:bg-surface-variant transition-colors border border-outline-variant/50">
@@ -623,7 +623,7 @@ export default function Trucks() {
                     <div key={trip._id} className="bg-white border border-outline-variant/50 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${trip.status === 'COMPLETED' ? 'bg-green-500' : trip.status === 'ACTIVE' ? 'bg-blue-500' : 'bg-amber-500'}`}></span>
+                          <span className={`w-2 h-2 rounded-full ${trip.status === 'COMPLETED' ? 'bg-green-500' : trip.status === 'ON_TRIP' ? 'bg-blue-500' : 'bg-amber-500'}`}></span>
                           <span className="font-bold text-[13px] tracking-wide text-on-surface">{trip.status}</span>
                         </div>
                         <span className="text-[12px] font-medium text-on-surface-variant bg-surface-container-lowest px-2 py-1 rounded-md border border-outline-variant/30">

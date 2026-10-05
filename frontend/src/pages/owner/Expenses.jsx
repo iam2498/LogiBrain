@@ -33,10 +33,10 @@ export default function Expenses() {
     try {
       const [expensesRes, tripsRes] = await Promise.all([
         axiosClient.get("/expenses"),
-        axiosClient.get("/trips?status=ACTIVE")
+        axiosClient.get("/trips?status=ON_TRIP")
       ]);
       setExpenses(expensesRes.data.data);
-      setActiveTrips(tripsRes.data.data.filter(t => t.status === "ACTIVE"));
+      setActiveTrips(tripsRes.data.data.filter(t => t.status === "ON_TRIP"));
     } catch (error) {
       console.error("Failed to fetch data", error);
     } finally {
@@ -320,14 +320,14 @@ export default function Expenses() {
 
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[12px] font-semibold text-on-surface-variant">Select Active Trip <span className="text-red-500">*</span></label>
+                    <label className="text-[12px] font-semibold text-on-surface-variant">Select Trip In Progress <span className="text-red-500">*</span></label>
                     <select required name="tripId" value={newExpenseForm.tripId} onChange={handleFormChange} className="w-full h-10 px-3 bg-surface-container-lowest border border-outline-variant/50 rounded-lg focus:border-secondary outline-none transition-all text-[13px]">
                       <option value="">-- Choose Trip --</option>
                       {activeTrips.map(t => (
                         <option key={t._id} value={t._id}>Trip #{t._id.substring(t._id.length - 6)} ({t.source} to {t.destination})</option>
                       ))}
                     </select>
-                    {activeTrips.length === 0 && <p className="text-[11px] text-orange-600 mt-1">No active trips available to assign expenses.</p>}
+                    {activeTrips.length === 0 && <p className="text-[11px] text-orange-600 mt-1">No trips currently in progress available to assign expenses.</p>}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">

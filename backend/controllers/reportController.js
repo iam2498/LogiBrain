@@ -11,7 +11,7 @@ exports.getDashboardKPIs = async (req, res, next) => {
 
     const totalTrucks = await Truck.countDocuments({ ownerId });
     const totalDrivers = await Driver.countDocuments({ ownerId });
-    const activeTrips = await Trip.countDocuments({ ownerId, status: { $in: ["ACTIVE", "DRIVER_ENDED"] } });
+    const activeTrips = await Trip.countDocuments({ ownerId, status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] } });
 
     const reports = await TripReport.find({ ownerId });
     const totalRevenue = reports.reduce((sum, report) => sum + (report.grossRevenue || 0), 0);

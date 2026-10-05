@@ -8,10 +8,18 @@ export default function Trips() {
   const [trips, setTrips] = useState([]);
   const [availableTrucks, setAvailableTrucks] = useState([]);
   const [availableDrivers, setAvailableDrivers] = useState([]);
+  const [allTrucks, setAllTrucks] = useState([]);
+  const [allDrivers, setAllDrivers] = useState([]);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // Filter States
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [truckFilter, setTruckFilter] = useState("ALL");
+  const [driverFilter, setDriverFilter] = useState("ALL");
+  const [dateFilter, setDateFilter] = useState("");
 
   // Create Trip Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -28,6 +36,42 @@ export default function Trips() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [formErrors, setFormErrors] = useState({});
+
+  // Edit Trip Modal State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editTripForm, setEditTripForm] = useState(null);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [editSubmitError, setEditSubmitError] = useState("");
+
+  const selectedNewTruck = availableTrucks.find(t => t._id === newTripForm.truckId);
+  const newTripQuantityNum = Number(newTripForm.quantity);
+  const newTripTruckCapacity = selectedNewTruck?.capacity ? parseFloat(selectedNewTruck.capacity) : null;
+  const newTripCapacityError = (!isNaN(newTripQuantityNum) && newTripTruckCapacity !== null && newTripQuantityNum > newTripTruckCapacity)
+    ? `Quantity cannot exceed the selected truck's capacity of ${selectedNewTruck.capacity}.`
+    : null;
+
+  const selectedEditTruck = allTrucks.find(t => t._id === editTripForm?.truckId);
+  const editTripQuantityNum = Number(editTripForm?.quantity);
+  const editTripTruckCapacity = selectedEditTruck?.capacity ? parseFloat(selectedEditTruck.capacity) : null;
+  const editTripCapacityError = (!isNaN(editTripQuantityNum) && editTripTruckCapacity !== null && editTripQuantityNum > editTripTruckCapacity)
+    ? `Quantity cannot exceed the selected truck's capacity of ${selectedEditTruck.capacity}.`
+    : null;
+
+  const handleOpenEditModal = (trip) => {
+    setEditTripForm({
+      id: trip._id,
+      truckId: trip.truckId?._id || trip.truckId,
+      driverId: trip.driverId?._id || trip.driverId,
+      source: trip.source,
+      destination: trip.destination,
+      material: trip.material,
+      quantity: trip.quantity,
+      expectedRevenue: trip.expectedRevenue,
+      startDate: trip.startDate ? new Date(trip.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    });
+    setEditSubmitError("");
+    setIsEditModalOpen(true);
+  };
 
   const validateForm = () => {
     const errors = {};
@@ -56,11 +100,15 @@ export default function Trips() {
 
     const revNum = Number(expectedRevenue);
     if (!expectedRevenue || isNaN(revNum) || revNum <= 0) {
-      errors.expectedRevenue = "Expected revenue must be greater than ₹0.";
+      errors.expectedRevenue = "Trip rate must be greater than ₹0.";
     }
 
     if (!startDate || isNaN(new Date(startDate).getTime())) {
       errors.startDate = "Please select a valid start date.";
+    }
+
+    if (newTripCapacityError) {
+      errors.quantity = newTripCapacityError;
     }
 
     setFormErrors(errors);
@@ -68,9 +116,60 @@ export default function Trips() {
   };
 
   const handleFormChange = (e) => {
-    setNewTripForm({ ...newTripForm, [e.target.name]: e.target.value });
-    if (formErrors[e.target.name]) {
-      setFormErrors({ ...formErrors, [e.target.name]: "" });
+    const { name, value } = e.target;
+    
+    if (name === "truckId") {
+      const selectedTruck = availableTrucks.find(t => t._id === value);
+      let newDriverId = "";
+      
+      if (selectedTruck && selectedTruck.currentDriverId) {
+        const defaultDriverId = typeof selectedTruck.currentDriverId === 'object' 
+          ? selectedTruck.currentDriverId._id 
+          : selectedTruck.currentDriverId;
+          
+        const isAvailable = availableDrivers.some(d => d._id === defaultDriverId);
+        if (isAvailable) {
+          newDriverId = defaultDriverId;
+        }
+      }
+      
+      setNewTripForm({ ...newTripForm, [name]: value, driverId: newDriverId });
+      
+      if (formErrors[name]) {
+        setFormErrors({ ...formErrors, [name]: "" });
+      }
+      if (newDriverId && formErrors.driverId) {
+        setFormErrors(prev => ({ ...prev, driverId: "" }));
+      }
+    } else {
+      setNewTripForm({ ...newTripForm, [name]: value });
+      if (formErrors[name]) {
+        setFormErrors({ ...formErrors, [name]: "" });
+      }
+    }
+  };
+
+  const handleEditFormChange = (e) => {
+    const { name, value } = e.target;
+    
+    if (name === "truckId") {
+      const selectedTruck = allTrucks.find(t => t._id === value);
+      let newDriverId = "";
+      
+      if (selectedTruck && selectedTruck.currentDriverId) {
+        const defaultDriverId = typeof selectedTruck.currentDriverId === 'object' 
+          ? selectedTruck.currentDriverId._id 
+          : selectedTruck.currentDriverId;
+          
+        const isAvailable = availableDrivers.some(d => d._id === defaultDriverId) || editTripForm.driverId === defaultDriverId;
+        if (isAvailable) {
+          newDriverId = defaultDriverId;
+        }
+      }
+      
+      setEditTripForm({ ...editTripForm, [name]: value, driverId: newDriverId });
+    } else {
+      setEditTripForm({ ...editTripForm, [name]: value });
     }
   };
 
@@ -78,17 +177,19 @@ export default function Trips() {
     try {
       const [tripsRes, trucksRes, driversRes] = await Promise.all([
         axiosClient.get("/trips"),
-        axiosClient.get("/trucks?status=ACTIVE"),
-        axiosClient.get("/drivers?status=ACTIVE")
+        axiosClient.get("/trucks?status=AVAILABLE"),
+        axiosClient.get("/drivers?status=AVAILABLE")
       ]);
       setTrips(tripsRes.data.data);
-      // Ensure we only keep ACTIVE drivers who are not already on a pending/active trip
-      // Filtering on the frontend to guarantee we only show AVAILABLE/ACTIVE resources
-      const activeTrucks = trucksRes.data.data.filter(t => t.status === "ACTIVE");
-      const activeDrivers = driversRes.data.data.filter(d => d.status === "ACTIVE");
+      // Ensure we only keep AVAILABLE drivers who are not already on a pending/active trip
+      // Filtering on the frontend to guarantee we only show AVAILABLE resources
+      const activeTrucks = trucksRes.data.data.filter(t => t.status === "AVAILABLE");
+      const activeDrivers = driversRes.data.data.filter(d => d.status === "AVAILABLE");
       
       setAvailableTrucks(activeTrucks);
       setAvailableDrivers(activeDrivers);
+      setAllTrucks(trucksRes.data.data);
+      setAllDrivers(driversRes.data.data);
       
       setSelectedTrip(prev => {
         if (prev) {
@@ -136,6 +237,30 @@ export default function Trips() {
       setSubmitError(error.response?.data?.message || "Failed to create trip");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateTrip = async (e) => {
+    e.preventDefault();
+    setIsEditSubmitting(true);
+    setEditSubmitError("");
+    try {
+      const payload = {
+        ...editTripForm,
+        source: editTripForm.source.trim(),
+        destination: editTripForm.destination.trim(),
+        material: editTripForm.material.trim(),
+        quantity: String(Number(editTripForm.quantity)),
+        expectedRevenue: Number(editTripForm.expectedRevenue),
+      };
+      await axiosClient.put(`/trips/${editTripForm.id}`, payload);
+      setIsEditModalOpen(false);
+      setEditTripForm(null);
+      fetchTripsAndResources();
+    } catch (error) {
+      setEditSubmitError(error.response?.data?.message || "Failed to update trip");
+    } finally {
+      setIsEditSubmitting(false);
     }
   };
 
@@ -276,16 +401,9 @@ export default function Trips() {
                 <div className="bg-white p-4 rounded-xl border border-outline-variant/50 shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-blue-500">
                   <div className="flex items-center gap-2 mb-2 text-on-surface-variant">
                     <span className="material-symbols-outlined text-[16px] text-blue-600">route</span>
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Active</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider">On Trip</span>
                   </div>
-                  <div className="text-[24px] font-bold text-on-surface">{trips.filter(t => t.status === 'ACTIVE').length}</div>
-                </div>
-                <div className="bg-white p-4 rounded-xl border border-outline-variant/50 shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-amber-500">
-                  <div className="flex items-center gap-2 mb-2 text-on-surface-variant">
-                    <span className="material-symbols-outlined text-[16px] text-amber-600">hourglass_empty</span>
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Driver Ended</span>
-                  </div>
-                  <div className="text-[24px] font-bold text-on-surface">{trips.filter(t => t.status === 'DRIVER_ENDED').length}</div>
+                  <div className="text-[24px] font-bold text-on-surface">{trips.filter(t => t.status === 'ON_TRIP').length}</div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-outline-variant/50 shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-emerald-500">
                   <div className="flex items-center gap-2 mb-2 text-on-surface-variant">
@@ -294,6 +412,56 @@ export default function Trips() {
                   </div>
                   <div className="text-[24px] font-bold text-on-surface">{trips.filter(t => t.status === 'COMPLETED').length}</div>
                 </div>
+                <div className="bg-white p-4 rounded-xl border border-outline-variant/50 shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-red-500">
+                  <div className="flex items-center gap-2 mb-2 text-on-surface-variant">
+                    <span className="material-symbols-outlined text-[16px] text-red-600">cancel</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Cancelled</span>
+                  </div>
+                  <div className="text-[24px] font-bold text-on-surface">{trips.filter(t => t.status === 'CANCELLED').length}</div>
+                </div>
+              </div>
+
+              {/* Filters Section */}
+              <div className="bg-white p-4 rounded-xl border border-outline-variant/50 shadow-sm mb-6 flex flex-wrap gap-4 items-end">
+                 <div className="flex flex-col min-w-[150px]">
+                   <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Status</label>
+                   <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="h-9 px-3 bg-surface-container-lowest rounded-lg border border-outline-variant/50 text-[13px] outline-none focus:border-secondary transition-colors">
+                     <option value="ALL">All Statuses</option>
+                     <option value="ON_TRIP">On Trip</option>
+                     <option value="COMPLETED">Completed</option>
+                     <option value="CANCELLED">Cancelled</option>
+                   </select>
+                 </div>
+                 <div className="flex flex-col min-w-[150px]">
+                   <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Truck</label>
+                   <select value={truckFilter} onChange={e => setTruckFilter(e.target.value)} className="h-9 px-3 bg-surface-container-lowest rounded-lg border border-outline-variant/50 text-[13px] outline-none focus:border-secondary transition-colors">
+                     <option value="ALL">All Trucks</option>
+                     {Array.from(new Set(trips.filter(t => t.truckId).map(t => t.truckId._id))).map(truckId => {
+                       const truck = trips.find(t => t.truckId?._id === truckId).truckId;
+                       return <option key={truckId} value={truckId}>{truck.registrationNumber}</option>;
+                     })}
+                   </select>
+                 </div>
+                 <div className="flex flex-col min-w-[150px]">
+                   <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Driver</label>
+                   <select value={driverFilter} onChange={e => setDriverFilter(e.target.value)} className="h-9 px-3 bg-surface-container-lowest rounded-lg border border-outline-variant/50 text-[13px] outline-none focus:border-secondary transition-colors">
+                     <option value="ALL">All Drivers</option>
+                     {Array.from(new Set(trips.filter(t => t.driverId).map(t => t.driverId._id))).map(driverId => {
+                       const driver = trips.find(t => t.driverId?._id === driverId).driverId;
+                       return <option key={driverId} value={driverId}>{driver.userId?.name || driver.licenseNumber}</option>;
+                     })}
+                   </select>
+                 </div>
+                 <div className="flex flex-col min-w-[150px]">
+                   <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Start Date</label>
+                   <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="h-9 px-3 bg-surface-container-lowest rounded-lg border border-outline-variant/50 text-[13px] outline-none focus:border-secondary transition-colors" />
+                 </div>
+                 <div className="flex flex-col justify-end">
+                   <button onClick={() => {setStatusFilter("ALL"); setTruckFilter("ALL"); setDriverFilter("ALL"); setDateFilter(""); setSearchQuery("");}} className="h-9 px-4 bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-variant rounded-lg text-[13px] font-medium transition-colors border border-outline-variant/50 flex items-center gap-1.5">
+                     <span className="material-symbols-outlined text-[16px]">filter_alt_off</span>
+                     Clear
+                   </button>
+                 </div>
               </div>
 
               {/* Dual Pane Layout */}
@@ -301,14 +469,25 @@ export default function Trips() {
                 {/* Left Pane: Grid (70%) */}
                 <div className="w-full lg:w-[65%] h-full flex flex-col">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pr-2 pb-8 custom-scrollbar h-full content-start">
-                    {trips.filter(t => 
-                      t.source?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                      t.destination?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      t.truckId?.registrationNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      t.driverId?.userId?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      t.driverId?.licenseNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      t.status?.toLowerCase().includes(searchQuery.toLowerCase())
-                    ).map(trip => (
+                    {trips.filter(t => {
+                      if (statusFilter !== "ALL" && t.status !== statusFilter) return false;
+                      if (truckFilter !== "ALL" && t.truckId?._id !== truckFilter) return false;
+                      if (driverFilter !== "ALL" && t.driverId?._id !== driverFilter) return false;
+                      if (dateFilter && new Date(t.startDate).toISOString().split('T')[0] !== dateFilter) return false;
+                      
+                      if (searchQuery) {
+                        const sq = searchQuery.toLowerCase();
+                        if (!t.source?.toLowerCase().includes(sq) && 
+                            !t.destination?.toLowerCase().includes(sq) &&
+                            !t.truckId?.registrationNumber?.toLowerCase().includes(sq) &&
+                            !t.driverId?.userId?.name?.toLowerCase().includes(sq) &&
+                            !t.driverId?.licenseNumber?.toLowerCase().includes(sq) &&
+                            !t.status?.toLowerCase().includes(sq)) {
+                          return false;
+                        }
+                      }
+                      return true;
+                    }).map(trip => (
                       <div 
                         key={trip._id} 
                         onClick={() => setSelectedTrip(trip)}
@@ -316,11 +495,10 @@ export default function Trips() {
                       >
                         <div className="flex justify-between items-start mb-3">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider
-                            ${trip.status === 'ACTIVE' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
-                              trip.status === 'DRIVER_ENDED' ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+                            ${trip.status === 'ON_TRIP' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
                               trip.status === 'COMPLETED' ? 'bg-green-50 text-green-700 border-green-200' :
                               'bg-surface-container-high text-on-surface border-outline-variant'}`}>
-                            {trip.status}
+                            {trip.status === 'ON_TRIP' ? 'On Trip' : trip.status}
                           </span>
                           <span className="text-[11px] font-medium text-on-surface-variant">
                             {new Date(trip.startDate).toLocaleDateString('en-GB')}
@@ -377,11 +555,10 @@ export default function Trips() {
                              <p className="font-mono text-[14px] text-on-surface font-bold">{selectedTrip._id}</p>
                            </div>
                            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold border uppercase tracking-wider
-                              ${selectedTrip.status === 'ACTIVE' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
-                                selectedTrip.status === 'DRIVER_ENDED' ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+                              ${selectedTrip.status === 'ON_TRIP' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
                                 selectedTrip.status === 'COMPLETED' ? 'bg-green-50 text-green-700 border-green-200' :
                                 'bg-surface-container-high text-on-surface border-outline-variant'}`}>
-                              {selectedTrip.status}
+                              {selectedTrip.status === 'ON_TRIP' ? 'On Trip' : selectedTrip.status}
                            </span>
                         </div>
 
@@ -440,7 +617,7 @@ export default function Trips() {
                                  <span className="text-on-surface font-bold">{new Date(selectedTrip.startDate).toLocaleDateString()}</span>
                                </li>
                                <li className="flex justify-between items-center text-[13px] border-t border-outline-variant/20 pt-3">
-                                 <span className="text-on-surface-variant font-medium">Expected Revenue</span>
+                                 <span className="text-on-surface-variant font-medium">Trip Rate</span>
                                  <span className="text-emerald-600 font-bold font-mono">₹{selectedTrip.expectedRevenue?.toLocaleString()}</span>
                                </li>
                              </ul>
@@ -449,12 +626,7 @@ export default function Trips() {
                         
                         <div className="pt-6 mt-4 border-t border-outline-variant/30 flex flex-col gap-3">
                           <div className="flex gap-3 w-full">
-                            {selectedTrip.status === "DRIVER_ENDED" && (
-                              <button onClick={() => handleStatusChange(selectedTrip._id, "COMPLETED")} className="flex-1 bg-secondary text-white font-medium text-[13px] py-2.5 rounded-lg shadow-sm hover:bg-secondary/90 transition-colors flex items-center justify-center gap-2">
-                                <span className="material-symbols-outlined text-[18px]">verified</span> Confirm Completion
-                              </button>
-                            )}
-                            {selectedTrip.status === "ACTIVE" && (
+                            {selectedTrip.status === "ON_TRIP" && (
                               <>
                                 <button onClick={() => handleStatusChange(selectedTrip._id, "COMPLETED")} className="flex-1 bg-secondary text-white font-medium text-[13px] py-2.5 rounded-lg shadow-sm hover:bg-secondary/90 transition-colors flex items-center justify-center gap-2">
                                   <span className="material-symbols-outlined text-[18px]">done_all</span> Complete Trip
@@ -472,9 +644,14 @@ export default function Trips() {
                           </div>
                           
                           {/* Delete Trip Button */}
-                          <button onClick={() => handleDeleteTrip(selectedTrip._id)} className="w-full bg-red-50 text-red-600 font-medium text-[13px] py-2 rounded-lg border border-red-200 hover:bg-red-100 transition-colors flex items-center justify-center gap-2 mt-2">
-                            <span className="material-symbols-outlined text-[18px]">delete</span> Delete Trip
-                          </button>
+                          <div className="flex gap-3 mt-2 w-full">
+                            <button onClick={() => handleDeleteTrip(selectedTrip._id)} className="flex-1 bg-red-50 text-red-600 font-medium text-[13px] py-2 rounded-lg border border-red-200 hover:bg-red-100 transition-colors flex items-center justify-center gap-2">
+                              <span className="material-symbols-outlined text-[18px]">delete</span> Delete Trip
+                            </button>
+                            <button onClick={() => handleOpenEditModal(selectedTrip)} className="flex-1 bg-surface-container-low text-on-surface font-medium text-[13px] py-2 rounded-lg border border-outline-variant/50 hover:bg-surface-variant transition-colors flex items-center justify-center gap-2">
+                              <span className="material-symbols-outlined text-[18px]">edit</span> Edit Trip
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -549,6 +726,21 @@ export default function Trips() {
                             <option key={d._id} value={d._id}>{d.userId?.name} (Lic: {d.licenseNumber})</option>
                           ))}
                         </select>
+                        {(() => {
+                          const selectedTruck = availableTrucks.find(t => t._id === newTripForm.truckId);
+                          const defaultDriverId = selectedTruck?.currentDriverId?._id || selectedTruck?.currentDriverId;
+                          const isAvailable = defaultDriverId ? availableDrivers.some(d => d._id === defaultDriverId) : false;
+                          
+                          if (selectedTruck && defaultDriverId) {
+                            if (isAvailable && newTripForm.driverId === defaultDriverId) {
+                              return <p className="text-[11px] mt-1 font-medium text-emerald-600">Default driver for this truck</p>;
+                            } else if (!isAvailable) {
+                              const defaultDriverName = selectedTruck.currentDriverId?.userId?.name || "Default driver";
+                              return <p className="text-[11px] mt-1 font-medium text-amber-600">{defaultDriverName} is currently unavailable. Please select another driver.</p>;
+                            }
+                          }
+                          return null;
+                        })()}
                         {formErrors.driverId && <p className="text-red-500 text-[11px] mt-1 font-medium">{formErrors.driverId}</p>}
                       </div>
                     </div>
@@ -564,12 +756,18 @@ export default function Trips() {
                         {formErrors.material && <p className="text-red-500 text-[11px] mt-1 font-medium">{formErrors.material}</p>}
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-on-surface-variant">Quantity <span className="text-red-500">*</span></label>
-                        <input required type="text" name="quantity" value={newTripForm.quantity} onChange={handleFormChange} placeholder="e.g. 20 (Tons)" className={`w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border ${formErrors.quantity ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20' : 'border-outline-variant/50 focus:border-secondary'}`} />
+                        <label className="text-[12px] font-semibold text-on-surface-variant flex justify-between items-center">
+                          <span>Quantity <span className="text-red-500">*</span></span>
+                          {selectedNewTruck?.capacity && (
+                            <span className="text-secondary font-medium">Max capacity: {selectedNewTruck.capacity}</span>
+                          )}
+                        </label>
+                        <input required type="text" name="quantity" value={newTripForm.quantity} onChange={handleFormChange} placeholder="e.g. 20" className={`w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border ${formErrors.quantity || newTripCapacityError ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20' : 'border-outline-variant/50 focus:border-secondary'}`} />
                         {formErrors.quantity && <p className="text-red-500 text-[11px] mt-1 font-medium">{formErrors.quantity}</p>}
+                        {newTripCapacityError && !formErrors.quantity && <p className="text-red-500 text-[11px] mt-1 font-medium">{newTripCapacityError}</p>}
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-on-surface-variant">Expected Revenue (₹) <span className="text-red-500">*</span></label>
+                        <label className="text-[12px] font-semibold text-on-surface-variant">Trip Rate (₹) <span className="text-red-500">*</span></label>
                         <input required type="number" name="expectedRevenue" value={newTripForm.expectedRevenue} onChange={handleFormChange} placeholder="e.g. 15000" className={`w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] font-mono border ${formErrors.expectedRevenue ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20' : 'border-outline-variant/50 focus:border-secondary'}`} />
                         {formErrors.expectedRevenue && <p className="text-red-500 text-[11px] mt-1 font-medium">{formErrors.expectedRevenue}</p>}
                       </div>
@@ -585,7 +783,7 @@ export default function Trips() {
 
                 <div className="pt-2 flex gap-3 pb-4">
                   <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 px-4 py-3 bg-white border border-outline-variant/50 rounded-lg font-medium text-[14px] text-on-surface hover:bg-surface-container-low transition-colors">Cancel</button>
-                  <button type="submit" disabled={isSubmitting} className={`flex-1 px-4 py-3 bg-[#0a0a0a] text-white rounded-lg font-medium text-[14px] hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm ${isSubmitting ? 'opacity-80 cursor-not-allowed' : ''}`}>
+                  <button type="submit" disabled={isSubmitting || !!newTripCapacityError} className={`flex-1 px-4 py-3 bg-[#0a0a0a] text-white rounded-lg font-medium text-[14px] hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm ${isSubmitting || newTripCapacityError ? 'opacity-80 cursor-not-allowed' : ''}`}>
                     {isSubmitting ? (
                       <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
                     ) : (
@@ -602,6 +800,119 @@ export default function Trips() {
         </div>
       )}
 
+      {/* Edit Trip Modal */}
+      {isEditModalOpen && editTripForm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 md:p-10">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[600px] max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-lowest shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-secondary text-[24px]">edit</span>
+                <h3 className="text-[18px] font-bold text-on-surface">Edit Trip</h3>
+              </div>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low p-1.5 rounded-full transition-colors">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-background">
+              <form onSubmit={handleUpdateTrip} className="space-y-6">
+                {editSubmitError && (
+                  <div className="p-3 bg-red-50 text-red-600 rounded-lg text-[13px] border border-red-100 flex items-center gap-2">
+                     <span className="material-symbols-outlined text-[16px]">error</span>
+                     {editSubmitError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="space-y-4 col-span-full bg-white p-4 rounded-xl border border-outline-variant/40 shadow-sm">
+                    <h4 className="text-[13px] font-bold text-on-surface-variant uppercase tracking-wider mb-2 border-b border-outline-variant/20 pb-2">Route Details</h4>
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-on-surface-variant">Source <span className="text-red-500">*</span></label>
+                        <input required type="text" name="source" value={editTripForm.source} onChange={handleEditFormChange} className="w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border border-outline-variant/50 focus:border-secondary" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-on-surface-variant">Destination <span className="text-red-500">*</span></label>
+                        <input required type="text" name="destination" value={editTripForm.destination} onChange={handleEditFormChange} className="w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border border-outline-variant/50 focus:border-secondary" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 bg-white p-4 rounded-xl border border-outline-variant/40 shadow-sm">
+                    <h4 className="text-[13px] font-bold text-on-surface-variant uppercase tracking-wider mb-2 border-b border-outline-variant/20 pb-2">Resources</h4>
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-on-surface-variant flex justify-between items-center">
+                          <span>Assign Truck <span className="text-red-500">*</span></span>
+                        </label>
+                        <select required name="truckId" value={editTripForm.truckId} onChange={handleEditFormChange} className="w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border border-outline-variant/50 focus:border-secondary">
+                          <option value="">Select a truck</option>
+                          {allTrucks.filter(t => t.status === "AVAILABLE" || t._id === editTripForm.truckId).map(t => (
+                            <option key={t._id} value={t._id}>{t.registrationNumber} ({t.capacity || 'N/A'})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-on-surface-variant">Assign Driver <span className="text-red-500">*</span></label>
+                        <select required name="driverId" value={editTripForm.driverId} onChange={handleEditFormChange} className="w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border border-outline-variant/50 focus:border-secondary">
+                          <option value="">Select a driver</option>
+                          {allDrivers.filter(d => d.status === "AVAILABLE" || d._id === editTripForm.driverId).map(d => (
+                            <option key={d._id} value={d._id}>{d.userId?.name} (Lic: {d.licenseNumber})</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 bg-white p-4 rounded-xl border border-outline-variant/40 shadow-sm">
+                    <h4 className="text-[13px] font-bold text-on-surface-variant uppercase tracking-wider mb-2 border-b border-outline-variant/20 pb-2">Cargo & Timeline</h4>
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-on-surface-variant">Material <span className="text-red-500">*</span></label>
+                        <input required type="text" name="material" value={editTripForm.material} onChange={handleEditFormChange} className="w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border border-outline-variant/50 focus:border-secondary" />
+                      </div>
+                      <div className="flex gap-3">
+                        <div className="space-y-1.5 flex-1">
+                          <label className="text-[12px] font-semibold text-on-surface-variant flex justify-between items-center">
+                            <span>Quantity <span className="text-red-500">*</span></span>
+                            {selectedEditTruck?.capacity && (
+                              <span className="text-secondary font-medium">Max capacity: {selectedEditTruck.capacity}</span>
+                            )}
+                          </label>
+                          <input required type="number" step="0.01" name="quantity" value={editTripForm.quantity} onChange={handleEditFormChange} className={`w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border ${editTripCapacityError ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20' : 'border-outline-variant/50 focus:border-secondary'}`} />
+                          {editTripCapacityError && <p className="text-red-500 text-[11px] mt-1 font-medium">{editTripCapacityError}</p>}
+                        </div>
+                        <div className="space-y-1.5 flex-1">
+                          <label className="text-[12px] font-semibold text-on-surface-variant">Trip Rate (₹) <span className="text-red-500">*</span></label>
+                          <input required type="number" name="expectedRevenue" value={editTripForm.expectedRevenue} onChange={handleEditFormChange} className="w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border border-outline-variant/50 focus:border-secondary" />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-on-surface-variant">Start Date <span className="text-red-500">*</span></label>
+                        <input required type="date" name="startDate" value={editTripForm.startDate} onChange={handleEditFormChange} className="w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border border-outline-variant/50 focus:border-secondary" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-3 border-t border-outline-variant/20">
+                  <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-4 py-2 bg-white border border-outline-variant/50 rounded-lg font-medium text-[13px] text-on-surface hover:bg-surface-container-low transition-colors">Cancel</button>
+                  <button type="submit" disabled={isEditSubmitting || !!editTripCapacityError} className={`flex-1 px-4 py-2 bg-[#0a0a0a] text-white rounded-lg font-medium text-[13px] hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm ${isEditSubmitting || editTripCapacityError ? 'opacity-80 cursor-not-allowed' : ''}`}>
+                    {isEditSubmitting ? (
+                      <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-[18px]">save</span>
+                        Save Changes
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

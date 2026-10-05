@@ -372,7 +372,7 @@ export default function Reports() {
                   onChange={(e) => setFilters({...filters, status: e.target.value})}
                 >
                   <option value="">All Statuses</option>
-                  <option value="ACTIVE">Active</option>
+                  <option value="ON_TRIP">On Trip</option>
                   <option value="COMPLETED">Completed</option>
                   <option value="CANCELLED">Cancelled</option>
                 </select>
@@ -582,7 +582,7 @@ export default function Reports() {
                       <tr className="bg-surface-container-lowest text-on-surface-variant text-[11px] uppercase tracking-wider border-b border-outline-variant/50">
                         <th className="px-6 py-3 font-bold">Route</th>
                         <th className="px-6 py-3 font-bold">Date Completed</th>
-                        <th className="px-6 py-3 font-bold text-right">Expected Rev.</th>
+                        <th className="px-6 py-3 font-bold text-right">Trip Rate</th>
                         <th className="px-6 py-3 font-bold text-right">Actual Rev.</th>
                         <th className="px-6 py-3 font-bold text-right">Status</th>
                       </tr>
@@ -734,8 +734,8 @@ export default function Reports() {
                             <div className="font-bold text-[14px] text-on-surface">
                               {trip.source} <span className="text-secondary/60 mx-1">→</span> {trip.destination}
                             </div>
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-[10px] ${trip.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : (trip.status === 'ACTIVE' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800')}`}>
-                              {trip.status}
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-[10px] ${trip.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : (trip.status === 'ON_TRIP' || trip.status === 'ACTIVE' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800')}`}>
+                              {trip.status === 'ON_TRIP' || trip.status === 'ACTIVE' ? 'On Trip' : trip.status}
                             </span>
                           </div>
                           

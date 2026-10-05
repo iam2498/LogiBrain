@@ -24,7 +24,7 @@ const updateDriverSchema = z.object({
 });
 
 const updateDriverStatusSchema = z.object({
-  status: z.enum(["ACTIVE", "INACTIVE"]),
+  status: z.enum(["AVAILABLE", "ON_TRIP", "ON_LEAVE"]),
 });
 
 module.exports = { createDriverSchema, updateDriverSchema, updateDriverStatusSchema };

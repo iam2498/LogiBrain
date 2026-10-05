@@ -20,6 +20,7 @@ router.use(scopeOwnership); // Applies req.scopedQuery based on role (OWNER or D
 
 // Owner only
 router.post("/", authorize("OWNER"), createTrip);
+router.put("/:id", authorize("OWNER"), require("../controllers/tripController").updateTrip);
 router.patch("/:id/confirm-end", authorize("OWNER"), ownerConfirmEndTrip);
 router.patch("/:id/cancel", authorize("OWNER"), cancelTrip);
 router.delete("/:id", authorize("OWNER"), deleteTrip);

@@ -6,7 +6,7 @@ const createTruckSchema = z.object({
   model: z.string().optional(),
   capacity: z.string().optional(),
   purchaseDate: z.string().optional(), // Or Date
-  status: z.enum(["ACTIVE", "INACTIVE", "MAINTENANCE"]).optional(),
+  status: z.enum(["AVAILABLE", "ON_TRIP", "MAINTENANCE"]).optional(),
   currentDriverId: z.string().nullable().optional(),
   imageUrl: z.string().optional(),
 });
@@ -14,7 +14,7 @@ const createTruckSchema = z.object({
 const updateTruckSchema = createTruckSchema.partial();
 
 const updateTruckStatusSchema = z.object({
-  status: z.enum(["ACTIVE", "INACTIVE", "MAINTENANCE"]),
+  status: z.enum(["AVAILABLE", "ON_TRIP", "MAINTENANCE"]),
 });
 
 module.exports = { createTruckSchema, updateTruckSchema, updateTruckStatusSchema };

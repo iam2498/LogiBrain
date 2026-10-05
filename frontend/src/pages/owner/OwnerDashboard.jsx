@@ -18,7 +18,7 @@ export default function OwnerDashboard() {
         const [kpiRes, reportRes, tripsRes] = await Promise.all([
           axiosClient.get("/reports/dashboard"),
           axiosClient.get("/reports/overall"),
-          axiosClient.get("/trips?status=ACTIVE")
+          axiosClient.get("/trips?status=ON_TRIP")
         ]);
         setKpis(kpiRes.data.data);
         setOverallReport(reportRes.data.data);
@@ -178,7 +178,7 @@ export default function OwnerDashboard() {
             <Link to="/owner/trips" className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/40 shadow-sm hover:shadow-md transition-shadow group relative overflow-hidden block cursor-pointer">
               <div className="absolute top-0 right-0 w-24 h-24 bg-green-500/5 rounded-bl-full z-0"></div>
               <div className="flex justify-between items-start mb-4 relative z-10">
-                <span className="font-medium text-[14px] text-on-surface-variant group-hover:text-green-600 transition-colors">Active Trips</span>
+                <span className="font-medium text-[14px] text-on-surface-variant group-hover:text-green-600 transition-colors">On Trip</span>
                 <span className="material-symbols-outlined text-[22px] text-green-600 group-hover:scale-110 transition-transform">route</span>
               </div>
               <div className="flex items-center gap-3 relative z-10">
@@ -325,7 +325,7 @@ export default function OwnerDashboard() {
             {/* Active Trips Table */}
             <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-sm xl:col-span-2 flex flex-col overflow-hidden">
               <div className="p-6 border-b border-outline-variant/40 flex justify-between items-center bg-white">
-                <h3 className="text-[18px] font-bold text-on-surface">Active Trips ({activeTrips.length})</h3>
+                <h3 className="text-[18px] font-bold text-on-surface">On Trip ({activeTrips.length})</h3>
                 <Link to="/owner/trips" className="text-secondary font-medium text-[14px] hover:text-secondary-container hover:underline transition-colors flex items-center gap-1">
                   View All <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
                 </Link>
@@ -337,7 +337,7 @@ export default function OwnerDashboard() {
                       <th className="py-4 px-6 font-semibold text-[12px] text-on-surface-variant uppercase tracking-wider">Truck & Driver</th>
                       <th className="py-4 px-6 font-semibold text-[12px] text-on-surface-variant uppercase tracking-wider">Route</th>
                       <th className="py-4 px-6 font-semibold text-[12px] text-on-surface-variant uppercase tracking-wider">Status</th>
-                      <th className="py-4 px-6 font-semibold text-[12px] text-on-surface-variant uppercase tracking-wider text-right">Revenue</th>
+                      <th className="py-4 px-6 font-semibold text-[12px] text-on-surface-variant uppercase tracking-wider text-right">Trip Rate</th>
                       <th className="py-4 px-6 font-semibold text-[12px] text-on-surface-variant uppercase tracking-wider text-center">Action</th>
                     </tr>
                   </thead>
@@ -347,7 +347,7 @@ export default function OwnerDashboard() {
                         <td colSpan="5" className="py-12 text-center text-on-surface-variant font-medium bg-white">
                           <div className="flex flex-col items-center gap-3">
                             <span className="material-symbols-outlined text-[48px] text-outline-variant/40">rv_hookup</span>
-                            No active trips right now.
+                            No trips are currently in progress.
                           </div>
                         </td>
                       </tr>
@@ -369,11 +369,11 @@ export default function OwnerDashboard() {
                         </td>
                         <td className="py-4 px-6">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-bold border
-                            ${trip.status === 'ACTIVE' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
+                            ${trip.status === 'ON_TRIP' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
                               trip.status === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                               'bg-green-50 text-green-700 border-green-200'}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${trip.status === 'ACTIVE' ? 'bg-blue-500 animate-pulse' : trip.status === 'PENDING' ? 'bg-amber-500' : 'bg-green-500'}`}></span>
-                            {trip.status}
+                            <span className={`w-1.5 h-1.5 rounded-full ${trip.status === 'ON_TRIP' ? 'bg-blue-500 animate-pulse' : trip.status === 'PENDING' ? 'bg-amber-500' : 'bg-green-500'}`}></span>
+                            {trip.status === 'ON_TRIP' ? 'On Trip' : trip.status}
                           </span>
                         </td>
                         <td className="py-4 px-6 text-right">

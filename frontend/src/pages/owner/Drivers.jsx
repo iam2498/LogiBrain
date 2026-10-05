@@ -245,9 +245,9 @@ export default function Drivers() {
                 <div className="bg-white p-4 rounded-xl border border-outline-variant/50 shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-emerald-500">
                   <div className="flex items-center gap-2 mb-2 text-on-surface-variant">
                     <span className="material-symbols-outlined text-[16px] text-emerald-600">check_circle</span>
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Active</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Available</span>
                   </div>
-                  <div className="text-[24px] font-bold text-on-surface">{drivers.filter(d => d.status === 'ACTIVE').length}</div>
+                  <div className="text-[24px] font-bold text-on-surface">{drivers.filter(d => d.status === 'AVAILABLE').length}</div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-outline-variant/50 shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-blue-500">
                   <div className="flex items-center gap-2 mb-2 text-on-surface-variant">
@@ -261,7 +261,7 @@ export default function Drivers() {
                     <span className="material-symbols-outlined text-[16px] text-orange-600">event_busy</span>
                     <span className="text-[11px] font-bold uppercase tracking-wider">On Leave</span>
                   </div>
-                  <div className="text-[24px] font-bold text-on-surface">{drivers.filter(d => d.status === 'INACTIVE').length}</div>
+                  <div className="text-[24px] font-bold text-on-surface">{drivers.filter(d => d.status === 'ON_LEAVE').length}</div>
                 </div>
               </div>
 
@@ -269,9 +269,9 @@ export default function Drivers() {
               <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => setFilter('ALL')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'ALL' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-surface-container-low text-on-surface-variant border border-outline-variant/50 hover:bg-surface-variant'}`}>All</button>
-                  <button onClick={() => setFilter('ACTIVE')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'ACTIVE' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'}`}>Active</button>
+                  <button onClick={() => setFilter('AVAILABLE')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'AVAILABLE' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'}`}>Available</button>
                   <button onClick={() => setFilter('ON_TRIP')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'ON_TRIP' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'}`}>On Trip</button>
-                  <button onClick={() => setFilter('INACTIVE')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'INACTIVE' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100'}`}>On Leave</button>
+                  <button onClick={() => setFilter('ON_LEAVE')} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'ON_LEAVE' ? 'bg-on-surface text-surface-container-lowest border border-on-surface' : 'bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100'}`}>On Leave</button>
                 </div>
                 <div className="flex items-center bg-white p-1 rounded-lg border border-outline-variant/50 shrink-0">
                   <button className="p-1 rounded-md bg-surface-container-highest shadow-sm text-primary flex items-center justify-center">
@@ -303,9 +303,9 @@ export default function Drivers() {
                             <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full border border-blue-200 flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> On Trip
                             </span>
-                          ) : driver.status === 'ACTIVE' ? (
+                          ) : driver.status === 'AVAILABLE' ? (
                             <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Available
                             </span>
                           ) : (
                             <span className="bg-orange-50 text-orange-700 text-[10px] font-bold px-2 py-1 rounded-full border border-orange-200 flex items-center gap-1">
@@ -325,7 +325,7 @@ export default function Drivers() {
                               </div>
                             )}
                             {driver.status && (
-                              <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-surface flex items-center justify-center ${driver.status === 'ACTIVE' ? 'bg-emerald-500' : driver.status === 'ON_TRIP' ? 'bg-blue-500' : 'bg-orange-500'}`}></div>
+                              <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-surface flex items-center justify-center ${driver.status === 'AVAILABLE' ? 'bg-emerald-500' : driver.status === 'ON_TRIP' ? 'bg-blue-500' : 'bg-orange-500'}`}></div>
                             )}
                           </div>
                           <div>
@@ -368,7 +368,7 @@ export default function Drivers() {
                                 {selectedDriver.userId?.name?.charAt(0).toUpperCase()}
                               </div>
                             )}
-                            <div className={`absolute bottom-1 right-1 ${selectedDriver.status === 'ACTIVE' ? 'bg-emerald-500' : selectedDriver.status === 'ON_TRIP' ? 'bg-blue-500' : 'bg-orange-500'} w-5 h-5 rounded-full border-2 border-white flex items-center justify-center`}></div>
+                            <div className={`absolute bottom-1 right-1 ${selectedDriver.status === 'AVAILABLE' ? 'bg-emerald-500' : selectedDriver.status === 'ON_TRIP' ? 'bg-blue-500' : 'bg-orange-500'} w-5 h-5 rounded-full border-2 border-white flex items-center justify-center`}></div>
                           </div>
                           <div className="flex gap-2 relative">
                             <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface hover:bg-surface-variant transition-colors border border-outline-variant/50">
@@ -610,7 +610,7 @@ export default function Drivers() {
                             <th className="py-3 px-5 font-semibold text-[11px] text-on-surface-variant uppercase tracking-wider">Date</th>
                             <th className="py-3 px-5 font-semibold text-[11px] text-on-surface-variant uppercase tracking-wider">Route</th>
                             <th className="py-3 px-5 font-semibold text-[11px] text-on-surface-variant uppercase tracking-wider">Status</th>
-                            <th className="py-3 px-5 font-semibold text-[11px] text-on-surface-variant uppercase tracking-wider text-right">Revenue</th>
+                            <th className="py-3 px-5 font-semibold text-[11px] text-on-surface-variant uppercase tracking-wider text-right">Trip Rate</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-outline-variant/20">
@@ -629,10 +629,10 @@ export default function Drivers() {
                               </td>
                               <td className="py-3 px-5">
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider
-                                  ${trip.status === 'ACTIVE' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
+                                  ${trip.status === 'ON_TRIP' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
                                     trip.status === 'COMPLETED' ? 'bg-green-50 text-green-700 border-green-200' :
                                     'bg-surface-container-high text-on-surface border-outline-variant'}`}>
-                                  {trip.status}
+                                  {trip.status === 'ON_TRIP' ? 'On Trip' : trip.status}
                                 </span>
                               </td>
                               <td className="py-3 px-5 text-right font-mono text-[13px] font-bold text-on-surface whitespace-nowrap">

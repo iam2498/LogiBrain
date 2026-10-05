@@ -11,10 +11,12 @@ const createTripSchema = z.object({
     const num = Number(val);
     return !isNaN(num) && num > 0;
   }, "Quantity must be greater than 0"),
-  expectedRevenue: z.number().positive("Expected revenue must be greater than ₹0"),
+  expectedRevenue: z.number().positive("Trip rate must be greater than ₹0"),
   advanceAmount: z.number().min(0).optional(),
   startDate: z.string().refine((date) => !isNaN(new Date(date).getTime()), "Invalid start date"),
   expectedEndDate: z.string().optional(),
 });
 
-module.exports = { createTripSchema };
+const updateTripSchema = createTripSchema.partial();
+
+module.exports = { createTripSchema, updateTripSchema };

@@ -57,16 +57,18 @@ exports.getDrivers = async (req, res, next) => {
     // Resolve dynamic operational status
     const activeTrips = await Trip.find({
       driverId: { $in: drivers.map(d => d._id) },
-      status: { $in: ["PENDING", "ACTIVE", "DRIVER_ENDED"] }
+      status: "ON_TRIP"
     });
     const activeDriverIds = new Set(activeTrips.map(trip => trip.driverId.toString()));
     
     const resolvedDrivers = drivers.map(driver => {
       let status = driver.status;
+      if (status === "ACTIVE") status = "AVAILABLE";
+      if (status === "INACTIVE") status = "ON_LEAVE";
       if (activeDriverIds.has(driver._id.toString())) {
         status = "ON_TRIP";
       } else if (status === "ON_TRIP") {
-         status = "ACTIVE"; // Fix stale ON_TRIP
+         status = "AVAILABLE"; // Fix stale ON_TRIP
       }
       return { ...driver.toObject(), status };
     });
@@ -86,14 +88,16 @@ exports.getDriverById = async (req, res, next) => {
 
     const activeTrip = await Trip.findOne({
       driverId: driver._id,
-      status: { $in: ["PENDING", "ACTIVE", "DRIVER_ENDED"] }
+      status: "ON_TRIP"
     });
 
     let status = driver.status;
+    if (status === "ACTIVE") status = "AVAILABLE";
+    if (status === "INACTIVE") status = "ON_LEAVE";
     if (activeTrip) {
       status = "ON_TRIP";
     } else if (status === "ON_TRIP") {
-      status = "ACTIVE";
+      status = "AVAILABLE";
     }
 
     res.json({ success: true, data: { ...driver.toObject(), status } });
@@ -140,14 +144,16 @@ exports.updateDriver = async (req, res, next) => {
 
     const activeTrip = await Trip.findOne({
       driverId: updatedDriver._id,
-      status: { $in: ["PENDING", "ACTIVE", "DRIVER_ENDED"] }
+      status: "ON_TRIP"
     });
 
     let status = updatedDriver.status;
+    if (status === "ACTIVE") status = "AVAILABLE";
+    if (status === "INACTIVE") status = "ON_LEAVE";
     if (activeTrip) {
       status = "ON_TRIP";
     } else if (status === "ON_TRIP") {
-      status = "ACTIVE";
+      status = "AVAILABLE";
     }
 
     res.json({ success: true, data: { ...updatedDriver.toObject(), status } });
@@ -173,18 +179,20 @@ exports.updateDriverStatus = async (req, res, next) => {
     }
     
     // Also update User isActive
-    await User.findByIdAndUpdate(driver.userId, { isActive: status === "ACTIVE" });
+    await User.findByIdAndUpdate(driver.userId, { isActive: true }); // Always keep user active unless specifically deactivated elsewhere
 
     const activeTrip = await Trip.findOne({
       driverId: driver._id,
-      status: { $in: ["PENDING", "ACTIVE", "DRIVER_ENDED"] }
+      status: "ON_TRIP"
     });
 
     let resolvedStatus = driver.status;
+    if (resolvedStatus === "ACTIVE") resolvedStatus = "AVAILABLE";
+    if (resolvedStatus === "INACTIVE") resolvedStatus = "ON_LEAVE";
     if (activeTrip) {
       resolvedStatus = "ON_TRIP";
     } else if (resolvedStatus === "ON_TRIP") {
-      resolvedStatus = "ACTIVE";
+      resolvedStatus = "AVAILABLE";
     }
 
     res.json({ success: true, data: { ...driver.toObject(), status: resolvedStatus } });
