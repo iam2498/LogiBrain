@@ -12,6 +12,7 @@ const {
   forgotPasswordSchema,
   resetPasswordSchema,
   changePasswordSchema,
+  updateOwnerProfileSchema,
 } = require("../validators/authValidator");
 
 const generateTokens = (user) => {
@@ -289,9 +290,65 @@ exports.changePassword = async (req, res, next) => {
   }
 };
 
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const parsedData = updateOwnerProfileSchema.parse(req.body);
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const conflict = await User.findOne({
+      _id: { $ne: user._id },
+      $or: [{ email: parsedData.email }, { phone: parsedData.phone }],
+    }).lean();
+
+    if (conflict) {
+      if (conflict.email === parsedData.email && conflict.phone === parsedData.phone) {
+        return res.status(400).json({
+          success: false,
+          message: "Another account already uses this email and phone number",
+        });
+      }
+      if (conflict.email === parsedData.email) {
+        return res.status(400).json({
+          success: false,
+          message: "Another account already uses this email address",
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        message: "Another account already uses this phone number",
+      });
+    }
+
+    user.name = parsedData.name;
+    user.email = parsedData.email;
+    user.phone = parsedData.phone;
+    user.businessName = parsedData.businessName;
+    user.businessAddress = parsedData.businessAddress;
+    user.gstNumber = parsedData.gstNumber || "";
+    await user.save();
+
+    const safeUser = await User.findById(user._id)
+      .select("-passwordHash -resetPasswordOtp -resetPasswordExpires")
+      .lean();
+
+    res.json({
+      success: true,
+      message: "Owner profile updated successfully",
+      data: safeUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id).select("-passwordHash");
+    const user = await User.findById(req.user._id).select(
+      "-passwordHash -resetPasswordOtp -resetPasswordExpires"
+    );
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     let profile = user.toObject();

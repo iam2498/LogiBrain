@@ -13,6 +13,7 @@ import Drivers from "../pages/owner/Drivers";
 import Trips from "../pages/owner/Trips";
 import Expenses from "../pages/owner/Expenses";
 import Reports from "../pages/owner/Reports";
+import OwnerProfile from "../pages/owner/OwnerProfile";
 
 // Driver
 import DriverDashboard from "../pages/driver/DriverDashboard";
@@ -36,6 +37,7 @@ const AppRoutes = () => {
         <Route path="/owner/trips" element={<Trips />} />
         <Route path="/owner/expenses" element={<Expenses />} />
         <Route path="/owner/reports" element={<Reports />} />
+        <Route path="/owner/profile" element={<OwnerProfile />} />
       </Route>
 
       {/* Driver Routes */}

@@ -78,10 +78,38 @@ const changePasswordSchema = z.object({
     .refine((val) => val.trim().length > 0, "Password cannot be only spaces"),
 });
 
+const updateOwnerProfileSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Full name cannot be empty")
+    .min(3, "Full name must be at least 3 characters")
+    .refine((val) => !/^\d+$/.test(val), "Full name cannot be only numbers"),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Enter a valid email address (e.g. name@example.com)"),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, "Enter a valid 10-digit phone number"),
+  businessName: z
+    .string()
+    .trim()
+    .min(2, "Business name must be at least 2 characters"),
+  businessAddress: z
+    .string()
+    .trim()
+    .min(5, "Business address must be at least 5 characters"),
+  gstNumber: z.string().trim().optional(),
+});
+
 module.exports = {
   registerOwnerSchema,
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
   changePasswordSchema,
+  updateOwnerProfileSchema,
 };

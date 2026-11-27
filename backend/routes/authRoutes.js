@@ -8,8 +8,10 @@ const {
   forgotPassword,
   resetPassword,
   changePassword,
+  updateProfile,
 } = require("../controllers/authController");
 const authenticate = require("../middleware/authenticate");
+const authorize = require("../middleware/authorize");
 const rateLimit = require("express-rate-limit");
 
 const router = express.Router();
@@ -28,5 +30,6 @@ router.post("/refresh", refresh);
 router.post("/logout", logout);
 router.get("/me", authenticate, getMe);
 router.patch("/change-password", authenticate, changePassword);
+router.patch("/profile", authenticate, authorize("OWNER"), updateProfile);
 
 module.exports = router;

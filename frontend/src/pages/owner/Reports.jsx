@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import OwnerProfileCard from "../../components/layout/OwnerProfileCard";
 
 export default function Reports() {
   const { user, logout } = useAuth();
@@ -253,15 +254,7 @@ export default function Reports() {
         </nav>
 
         <div className="px-6 pt-6 border-t border-on-primary-container/20 mt-auto">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-surface-container-highest/20 flex items-center justify-center text-white font-bold border border-on-primary-container/30">
-              {user?.name?.charAt(0).toUpperCase()}
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-white text-[14px] font-medium truncate">{user?.name}</p>
-              <p className="text-on-primary-container text-[12px] truncate">{user?.email}</p>
-            </div>
-          </div>
+          <OwnerProfileCard onNavigate={() => setIsSidebarOpen(false)} />
           <button onClick={logout} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">logout</span> Sign Out
           </button>
