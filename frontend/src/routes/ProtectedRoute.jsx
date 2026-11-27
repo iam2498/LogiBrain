@@ -12,6 +12,7 @@ const ProtectedRoute = ({ allowedRoles }) => {
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     // Redirect based on role if they try to access unauthorized routes
+    if (user.role === "ADMIN") return <Navigate to="/admin/dashboard" replace />;
     if (user.role === "OWNER") return <Navigate to="/owner/dashboard" replace />;
     if (user.role === "DRIVER") return <Navigate to="/driver/dashboard" replace />;
     return <Navigate to="/" replace />;

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import { useNavigate, Link } from "react-router-dom";
 
 export default function RegisterOwner() {
@@ -11,6 +12,7 @@ export default function RegisterOwner() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { registerOwner } = useAuth();
+  const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -61,9 +63,12 @@ export default function RegisterOwner() {
     setIsLoading(true);
     try {
       await registerOwner(formData);
+      showSuccess("Registration successful! Please sign in with your credentials.");
       navigate("/login");
     } catch (err) {
-      setError(err.response?.data?.message || "Registration failed");
+      const msg = err.response?.data?.message || "Registration failed";
+      setError(msg);
+      showError(msg);
       setIsLoading(false);
     }
   };

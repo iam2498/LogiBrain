@@ -13,7 +13,9 @@ const scopeOwnership = async (req, res, next) => {
       }
       req.driverId = driver._id;
       req.ownerId = driver.ownerId; // Driver belongs to this owner
-      req.scopedQuery = { driverId: driver._id }; // Driver can only see stuff assigned to them
+      req.scopedQuery = {
+        $or: [{ driverIds: driver._id }, { driverId: driver._id }],
+      }; // Driver can only see stuff assigned to them
     }
     next();
   } catch (error) {

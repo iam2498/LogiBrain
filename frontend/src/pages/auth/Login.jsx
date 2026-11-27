@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import { useNavigate, Link } from "react-router-dom";
 
 export default function Login() {
@@ -10,6 +11,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
+  const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
 
   const handleIdentifierChange = (e) => {
@@ -52,13 +54,18 @@ export default function Login() {
     setIsLoading(true);
     try {
       const user = await login(identifier, password);
-      if (user.role === "OWNER") {
+      showSuccess(`Welcome back, ${user.name || "User"}!`);
+      if (user.role === "ADMIN") {
+        navigate("/admin/dashboard");
+      } else if (user.role === "OWNER") {
         navigate("/owner/dashboard");
       } else {
         navigate("/driver/dashboard");
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Login failed");
+      const msg = err.response?.data?.message || "Login failed";
+      setError(msg);
+      showError(msg);
       setIsLoading(false);
     }
   };
@@ -124,7 +131,7 @@ export default function Login() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <label className="font-label-md text-[14px] font-medium text-on-surface block" htmlFor="password">Password</label>
-                <a className="font-label-sm text-[12px] font-semibold text-secondary hover:text-primary transition-colors" href="#">Forgot Password?</a>
+                <Link to="/forgot-password" className="font-label-sm text-[12px] font-semibold text-secondary hover:text-primary transition-colors">Forgot Password?</Link>
               </div>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">lock</span>

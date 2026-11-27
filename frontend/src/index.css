@@ -57,10 +57,6 @@
   --spacing-xs: 4px;
   --spacing-gutter: 20px;
   --spacing-sidebar-width: 240px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
-  --spacing-sm: 8px;
   --spacing-base: 4px;
   --spacing-sidebar-collapsed: 64px;
   --spacing-container-max: 1440px;
@@ -174,4 +170,19 @@ input[type="password"]::-ms-clear {
 }
 input[type="password"]::-webkit-textfield-decoration-container {
     visibility: hidden;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.toast-enter {
+  animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

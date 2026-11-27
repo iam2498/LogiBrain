@@ -20,8 +20,8 @@ exports.createExpense = async (req, res, next) => {
 
     const expense = await Expense.create({
       ...parsedData,
-      truckId: trip.truckId,
-      driverId: trip.driverId,
+      truckId: trip.truckId || (trip.truckIds && trip.truckIds[0]),
+      driverId: trip.driverId || (trip.driverIds && trip.driverIds[0]),
       ownerId: trip.ownerId,
       receiptUrl,
       addedBy: req.user.role,

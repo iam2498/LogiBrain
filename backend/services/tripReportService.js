@@ -34,8 +34,8 @@ const generateTripReport = async (tripId) => {
       { tripId },
       {
         ownerId: trip.ownerId,
-        truckId: trip.truckId,
-        driverId: trip.driverId,
+        truckId: (trip.truckIds && trip.truckIds[0]) || trip.truckId,
+        driverId: (trip.driverIds && trip.driverIds[0]) || trip.driverId,
         grossRevenue,
         totalExpenses,
         netProfit,

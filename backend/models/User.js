@@ -6,12 +6,14 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     phone: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
-    role: { type: String, enum: ["OWNER", "DRIVER"], required: true },
+    role: { type: String, enum: ["ADMIN", "OWNER", "DRIVER"], required: true },
     businessName: { type: String }, // only for OWNER
     businessAddress: { type: String }, // only for OWNER
     gstNumber: { type: String }, // optional, OWNER only
     ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // only for DRIVER
     isActive: { type: Boolean, default: true },
+    resetPasswordOtp: { type: String },
+    resetPasswordExpires: { type: Date },
   },
   { timestamps: true }
 );

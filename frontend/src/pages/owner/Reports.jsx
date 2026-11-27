@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 
 export default function Reports() {
   const { user, logout } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [reportData, setReportData] = useState(null);
   const [completedTrips, setCompletedTrips] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -166,12 +168,12 @@ export default function Reports() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      // Optional success indication
       setIsModalOpen(false);
       setSelectedTripId(null);
+      showSuccess("Trip report PDF downloaded successfully!");
     } catch (error) {
       console.error("PDF generation failed:", error);
-      alert("Unable to generate trip report. Please try again.");
+      showError("Unable to generate trip report. Please try again.");
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -179,19 +181,22 @@ export default function Reports() {
 
   const filteredModalTrips = trips.filter(t => {
     const query = searchQuery.toLowerCase();
-    const truckReg = t.truckId?.registrationNumber?.toLowerCase() || "";
-    const driverName = t.driverId?.userId?.name?.toLowerCase() || "";
-    const driverLic = t.driverId?.licenseNumber?.toLowerCase() || "";
+    const truckRegs = (t.truckIds?.length ? t.truckIds.map(tr => tr.registrationNumber).join(' ') : (t.truckId?.registrationNumber || '')).toLowerCase();
+    const driverNames = (t.driverIds?.length ? t.driverIds.map(dr => dr.userId?.name || dr.licenseNumber).join(' ') : (t.driverId?.userId?.name || t.driverId?.licenseNumber || '')).toLowerCase();
     const source = t.source?.toLowerCase() || "";
     const dest = t.destination?.toLowerCase() || "";
     const tid = t._id.toLowerCase();
     
-    const matchesSearch = truckReg.includes(query) || driverName.includes(query) || driverLic.includes(query) || 
+    const matchesSearch = truckRegs.includes(query) || driverNames.includes(query) || 
                           source.includes(query) || dest.includes(query) || tid.includes(query);
                           
     const matchesDate = !modalFilterDate || (t.startDate && new Date(t.startDate).toISOString().split('T')[0] === modalFilterDate);
-    const matchesTruck = modalFilterTruck === "ALL" || (t.truckId && t.truckId._id === modalFilterTruck);
-    const matchesDriver = modalFilterDriver === "ALL" || (t.driverId && t.driverId._id === modalFilterDriver);
+    const matchesTruck = modalFilterTruck === "ALL" || 
+      (t.truckIds && t.truckIds.some(tr => (tr._id || tr) === modalFilterTruck)) ||
+      (t.truckId && (t.truckId._id || t.truckId) === modalFilterTruck);
+    const matchesDriver = modalFilterDriver === "ALL" || 
+      (t.driverIds && t.driverIds.some(dr => (dr._id || dr) === modalFilterDriver)) ||
+      (t.driverId && (t.driverId._id || t.driverId) === modalFilterDriver);
     
     return matchesSearch && matchesDate && matchesTruck && matchesDriver;
   });
@@ -227,22 +232,22 @@ export default function Reports() {
         </div>
 
         <nav className="flex-1 overflow-y-auto custom-scrollbar px-3 space-y-1">
-          <Link to="/owner/dashboard" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/dashboard" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">dashboard</span> Dashboard
           </Link>
-          <Link to="/owner/trips" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/trips" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">route</span> Trips
           </Link>
-          <Link to="/owner/trucks" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/trucks" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">local_shipping</span> Trucks
           </Link>
-          <Link to="/owner/drivers" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/drivers" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">person</span> Drivers
           </Link>
-          <Link to="/owner/expenses" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/expenses" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px]">payments</span> Expenses
           </Link>
-          <Link to="/owner/reports" className="flex items-center gap-3 px-4 py-3 text-secondary bg-surface-container-highest/10 rounded-lg hover:bg-surface-container-highest/20 transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/reports" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-secondary bg-surface-container-highest/10 rounded-lg hover:bg-surface-container-highest/20 transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px] fill-icon">assessment</span> Reports
           </Link>
         </nav>
@@ -285,10 +290,10 @@ export default function Reports() {
               </button>
             </div>
             <div className="h-6 w-px bg-outline-variant/50 hidden sm:block"></div>
-            <div className="hidden sm:flex items-center gap-3">
-              <button onClick={handleExport} className="bg-[#0a0a0a] text-white px-4 py-2 rounded-lg font-label-md text-[13px] font-medium hover:bg-black transition-transform duration-200 active:scale-95 flex items-center gap-2 shadow-sm">
+            <div className="flex items-center gap-2">
+              <button onClick={handleExport} className="bg-[#0a0a0a] text-white px-3 sm:px-4 py-2 rounded-lg font-label-md text-[13px] font-medium hover:bg-black transition-transform duration-200 active:scale-95 flex items-center gap-1.5 shadow-sm">
                 <span className="material-symbols-outlined text-[18px]">download</span>
-                Export Report
+                <span>Export Report</span>
               </button>
             </div>
           </div>
@@ -588,11 +593,11 @@ export default function Reports() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-outline-variant/30 text-[13px]">
-                      {completedTrips.filter(trip => 
-                        trip.source?.toLowerCase().includes(mainSearchQuery.toLowerCase()) || 
-                        trip.destination?.toLowerCase().includes(mainSearchQuery.toLowerCase()) ||
-                        trip.truckId?.registrationNumber?.toLowerCase().includes(mainSearchQuery.toLowerCase())
-                      ).length === 0 ? (
+                      {completedTrips.filter(trip => {
+                        const sq = mainSearchQuery.toLowerCase();
+                        const truckMatch = (trip.truckIds?.some(tr => tr.registrationNumber?.toLowerCase().includes(sq))) || trip.truckId?.registrationNumber?.toLowerCase().includes(sq);
+                        return trip.source?.toLowerCase().includes(sq) || trip.destination?.toLowerCase().includes(sq) || truckMatch;
+                      }).length === 0 ? (
                         <tr>
                           <td colSpan="5" className="px-6 py-12 text-center text-on-surface-variant">
                             <span className="material-symbols-outlined text-[48px] opacity-20 mb-3 block">history</span>
@@ -600,15 +605,19 @@ export default function Reports() {
                           </td>
                         </tr>
                       ) : (
-                        completedTrips.filter(trip => 
-                          trip.source?.toLowerCase().includes(mainSearchQuery.toLowerCase()) || 
-                          trip.destination?.toLowerCase().includes(mainSearchQuery.toLowerCase()) ||
-                          trip.truckId?.registrationNumber?.toLowerCase().includes(mainSearchQuery.toLowerCase())
-                        ).map((trip) => (
+                        completedTrips.filter(trip => {
+                          const sq = mainSearchQuery.toLowerCase();
+                          const truckMatch = (trip.truckIds?.some(tr => tr.registrationNumber?.toLowerCase().includes(sq))) || trip.truckId?.registrationNumber?.toLowerCase().includes(sq);
+                          return trip.source?.toLowerCase().includes(sq) || trip.destination?.toLowerCase().includes(sq) || truckMatch;
+                        }).map((trip) => (
                           <tr key={trip._id} className="hover:bg-surface-container-lowest/50 transition-colors">
                             <td className="px-6 py-4">
                               <div className="font-bold text-on-surface">{trip.source} → {trip.destination}</div>
-                              <div className="text-on-surface-variant text-[11px]">Truck: {trip.truckId?.registrationNumber || "Unknown"}</div>
+                              <div className="text-on-surface-variant text-[11px]">
+                                Truck: {trip.truckIds && trip.truckIds.length > 0
+                                  ? trip.truckIds.map(tr => tr.registrationNumber).join(', ')
+                                  : trip.truckId?.registrationNumber || "Unknown"}
+                              </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-on-surface-variant font-medium">
                               {trip.actualEndDate ? new Date(trip.actualEndDate).toLocaleDateString('en-GB') : '-'}
@@ -746,11 +755,15 @@ export default function Reports() {
                           <div className="flex items-center gap-3 pt-2 border-t border-outline-variant/30">
                             <div className="flex items-center gap-1.5 bg-surface-container-low px-2 py-1 rounded-md text-[11px] font-medium text-on-surface">
                               <span className="material-symbols-outlined text-[14px] text-secondary">local_shipping</span>
-                              {trip.truckId?.registrationNumber || 'Unknown'}
+                              {trip.truckIds && trip.truckIds.length > 0
+                                ? trip.truckIds.map(tr => tr.registrationNumber).join(', ')
+                                : trip.truckId?.registrationNumber || 'Unknown'}
                             </div>
                             <div className="flex items-center gap-1.5 bg-surface-container-low px-2 py-1 rounded-md text-[11px] font-medium text-on-surface">
                               <span className="material-symbols-outlined text-[14px] text-primary">person</span>
-                              {trip.driverId?.userId?.name || trip.driverId?.licenseNumber || 'Unknown'}
+                              {trip.driverIds && trip.driverIds.length > 0
+                                ? trip.driverIds.map(dr => dr.userId?.name || dr.licenseNumber).join(', ')
+                                : trip.driverId?.userId?.name || trip.driverId?.licenseNumber || 'Unknown'}
                             </div>
                           </div>
                         </div>
@@ -793,11 +806,19 @@ export default function Reports() {
                       <div className="pt-3 border-t border-outline-variant/30 grid grid-cols-2 gap-4">
                          <div>
                           <div className="text-[11px] font-bold text-on-surface-variant uppercase mb-1">Truck</div>
-                          <div className="text-[13px] font-medium text-on-surface">{selectedTripDetails.truckId?.registrationNumber || 'N/A'}</div>
+                          <div className="text-[13px] font-medium text-on-surface">
+                            {selectedTripDetails.truckIds && selectedTripDetails.truckIds.length > 0
+                              ? selectedTripDetails.truckIds.map(tr => tr.registrationNumber).join(', ')
+                              : selectedTripDetails.truckId?.registrationNumber || 'N/A'}
+                          </div>
                         </div>
                         <div>
                           <div className="text-[11px] font-bold text-on-surface-variant uppercase mb-1">Driver</div>
-                          <div className="text-[13px] font-medium text-on-surface truncate">{selectedTripDetails.driverId?.userId?.name || selectedTripDetails.driverId?.licenseNumber || 'N/A'}</div>
+                          <div className="text-[13px] font-medium text-on-surface truncate">
+                            {selectedTripDetails.driverIds && selectedTripDetails.driverIds.length > 0
+                              ? selectedTripDetails.driverIds.map(dr => dr.userId?.name || dr.licenseNumber).join(', ')
+                              : selectedTripDetails.driverId?.userId?.name || selectedTripDetails.driverId?.licenseNumber || 'N/A'}
+                          </div>
                         </div>
                       </div>
                     </div>

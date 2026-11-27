@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import axiosClient from "../../api/axiosClient";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 
 export default function DriverDashboard() {
   const { user, logout } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [profile, setProfile] = useState(null);
   const [myTrips, setMyTrips] = useState([]);
   const [tripExpenses, setTripExpenses] = useState([]);
@@ -67,12 +69,12 @@ export default function DriverDashboard() {
     if (!window.confirm("Are you sure you want to request this trip to be ended?")) return;
     try {
       await axiosClient.patch(`/trips/${tripId}/end`);
-      alert("Trip end requested successfully. Waiting for owner confirmation.");
+      showSuccess("Trip end requested successfully. Waiting for owner confirmation.");
       // Refresh
       const tripsRes = await axiosClient.get("/trips?status=ON_TRIP");
       setMyTrips(tripsRes.data.data);
     } catch (error) {
-      alert("Failed to end trip: " + error.response?.data?.message);
+      showError("Failed to end trip: " + (error.response?.data?.message || "Unknown error"));
     }
   };
 
@@ -113,7 +115,7 @@ export default function DriverDashboard() {
         description: expenseForm.description,
         date: new Date().toISOString()
       });
-      alert("Expense added successfully!");
+      showSuccess("Expense added successfully!");
       setIsExpenseModalOpen(false);
       setExpenseForm({ amount: "", category: "Fuel", description: "" });
       
@@ -258,7 +260,11 @@ export default function DriverDashboard() {
                     <p className="text-[11px] md:text-[12px] text-on-surface-variant font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
                       <span className="material-symbols-outlined text-[14px] md:text-[16px]">tag</span> Truck
                     </p>
-                    <p className="font-mono font-bold text-[13px] md:text-[15px] text-on-surface">{currentTrip.truckId?.registrationNumber || 'Unknown'}</p>
+                    <p className="font-mono font-bold text-[13px] md:text-[15px] text-on-surface">
+                      {currentTrip.truckIds && currentTrip.truckIds.length > 0
+                        ? currentTrip.truckIds.map((t) => t.registrationNumber).join(", ")
+                        : currentTrip.truckId?.registrationNumber || "Unknown"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-[11px] md:text-[12px] text-on-surface-variant font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
