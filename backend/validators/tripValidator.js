@@ -69,7 +69,7 @@ const updateTripSchema = z
       .optional(),
     expectedEndDate: z.string().optional(),
     actualEndDate: z.string().optional(),
-    status: z.enum(["ON_TRIP", "COMPLETED", "CANCELLED"]).optional(),
+    status: z.enum(["ON_TRIP", "DRIVER_ENDED", "COMPLETED", "CANCELLED"]).optional(),
   })
   .transform((data) => {
     let finalTruckIds = data.truckIds;

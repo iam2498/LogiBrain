@@ -4,6 +4,247 @@ import axiosClient from "../../api/axiosClient";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 
+function getDriverInitials(name) {
+  if (!name) return "DR";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+}
+
+function FleetAssignmentSection({
+  truckIds,
+  driverIds,
+  allTrucks,
+  allDrivers,
+  selectableTrucks,
+  getSelectableDriversForRow,
+  totalCapacity,
+  onAddTruck,
+  onRemoveTruck,
+  onRemoveAll,
+  onAssignDriver,
+  errors = {},
+}) {
+  const hasAvailableTrucks = selectableTrucks.length > 0;
+
+  return (
+    <div className="space-y-4 col-span-full bg-white p-4 rounded-xl border border-outline-variant/40 shadow-sm">
+      <div className="flex flex-wrap justify-between items-center gap-2 border-b border-outline-variant/20 pb-2.5">
+        <h4 className="text-[13px] font-bold text-on-surface-variant uppercase tracking-wider">
+          Fleet &amp; Crew Assignment <span className="text-red-500">*</span>
+        </h4>
+        <div className="flex items-center gap-2">
+          {totalCapacity > 0 && (
+            <span className="text-[11px] font-bold text-secondary bg-secondary/10 px-2.5 py-0.5 rounded-full">
+              Combined Capacity: {totalCapacity} Tons
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Add Truck Bar + Remove All */}
+      <div className="flex items-center gap-3">
+        <div
+          className={`relative flex-1 flex items-center h-11 px-3.5 rounded-xl border border-dashed transition-colors ${
+            errors.truckIds
+              ? "border-red-400 bg-red-50/30"
+              : hasAvailableTrucks
+              ? "border-outline-variant/70 bg-surface-container-lowest hover:border-secondary/60"
+              : "border-outline-variant/40 bg-surface-container-low/60"
+          }`}
+        >
+          <span
+            className={`material-symbols-outlined text-[18px] mr-2 shrink-0 ${
+              hasAvailableTrucks ? "text-secondary" : "text-on-surface-variant/50"
+            }`}
+          >
+            add
+          </span>
+          <span
+            className={`text-[13px] font-semibold shrink-0 ${
+              hasAvailableTrucks ? "text-secondary" : "text-on-surface-variant/70"
+            }`}
+          >
+            Add a truck
+          </span>
+          <span className="ml-auto text-[12px] text-on-surface-variant/80 pl-3 truncate">
+            {hasAvailableTrucks
+              ? `${selectableTrucks.length} available`
+              : "No more available trucks"}
+          </span>
+          <select
+            aria-label="Add a truck"
+            value=""
+            disabled={!hasAvailableTrucks}
+            onChange={(e) => onAddTruck(e.target.value)}
+            className={`absolute inset-0 w-full h-full opacity-0 ${
+              hasAvailableTrucks ? "cursor-pointer" : "cursor-not-allowed"
+            }`}
+          >
+            <option value="">
+              {hasAvailableTrucks ? "Choose a truck to add..." : "No more available trucks"}
+            </option>
+            {selectableTrucks.map((t) => {
+              const dObj = (allDrivers || []).find((d) => {
+                const dId = t.currentDriverId?._id || t.currentDriverId;
+                return dId && dId.toString() === d._id.toString();
+              });
+              return (
+                <option key={t._id} value={t._id}>
+                  {t.registrationNumber}
+                  {t.capacity ? ` (${t.capacity}` : ""}
+                  {t.truckType ? `${t.capacity ? ", " : " ("}${t.truckType})` : t.capacity ? ")" : ""}
+                  {dObj ? ` • Default: ${dObj.userId?.name || dObj.licenseNumber}` : ""}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
+        {truckIds.length > 0 && (
+          <button
+            type="button"
+            onClick={onRemoveAll}
+            className="text-[12px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 px-2.5 py-2 rounded-lg transition-colors shrink-0 cursor-pointer"
+          >
+            Remove all
+          </button>
+        )}
+      </div>
+
+      {errors.truckIds && (
+        <p className="text-red-500 text-[11px] font-medium -mt-2">{errors.truckIds}</p>
+      )}
+
+      {/* Trucks & Drivers List */}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+            Trucks &amp; Drivers ({truckIds.length})
+          </span>
+        </div>
+
+        {truckIds.length === 0 ? (
+          <div className="border border-dashed border-outline-variant/50 rounded-xl p-5 text-center bg-surface-container-lowest">
+            <p className="text-[12px] text-on-surface-variant">
+              No trucks assigned yet. Click <span className="font-semibold text-secondary">+ Add a truck</span> above and pick a driver for each truck.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {truckIds.map((truckId, idx) => {
+              const truck = (allTrucks || []).find((t) => t._id === truckId);
+              const assignedDriverId = driverIds[idx] || "";
+              const selectableDrivers = getSelectableDriversForRow(idx);
+              const assignedDriver = (allDrivers || []).find((d) => d._id === assignedDriverId);
+              const isReady = Boolean(assignedDriverId && assignedDriver);
+              const driverName = assignedDriver?.userId?.name || assignedDriver?.licenseNumber || "";
+
+              return (
+                <div
+                  key={truckId}
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-3.5 py-3 rounded-xl border transition-all ${
+                    isReady
+                      ? "bg-white border-outline-variant/50 shadow-2xs"
+                      : "bg-amber-50/50 border-amber-300"
+                  }`}
+                >
+                  {/* Left: Index + Truck info */}
+                  <div className="flex items-center gap-3 min-w-[180px]">
+                    <span className="w-7 h-7 rounded-full bg-surface-container-high text-on-surface font-bold text-[12px] flex items-center justify-center shrink-0">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-mono font-bold text-[13px] text-on-surface truncate">
+                        {truck?.registrationNumber || "Truck"}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        {truck?.capacity && (
+                          <span className="bg-secondary/10 text-secondary px-2 py-0.5 rounded text-[11px] font-semibold">
+                            {truck.capacity}
+                          </span>
+                        )}
+                        {truck?.truckType && (
+                          <span className="bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded text-[11px] font-medium">
+                            {truck.truckType}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Middle: Individual Driver Selector */}
+                  <div className="flex-1 min-w-[190px]">
+                    <div
+                      className={`h-10 px-2.5 rounded-lg border flex items-center gap-2 bg-white transition-colors ${
+                        isReady
+                          ? "border-outline-variant/60 focus-within:border-secondary"
+                          : "border-amber-300 focus-within:border-amber-500"
+                      }`}
+                    >
+                      {isReady ? (
+                        <span className="w-6 h-6 rounded-full bg-secondary/15 text-secondary text-[10px] font-bold flex items-center justify-center shrink-0">
+                          {getDriverInitials(driverName)}
+                        </span>
+                      ) : (
+                        <span className="material-symbols-outlined text-[18px] text-amber-700 shrink-0">
+                          person_outline
+                        </span>
+                      )}
+                      <select
+                        aria-label={`Select driver for ${truck?.registrationNumber || "truck"}`}
+                        value={assignedDriverId}
+                        onChange={(e) => onAssignDriver(idx, e.target.value)}
+                        className={`flex-1 bg-transparent text-[13px] font-medium outline-none cursor-pointer truncate ${
+                          isReady ? "text-on-surface" : "text-amber-900"
+                        }`}
+                      >
+                        <option value="">Choose a driver</option>
+                        {selectableDrivers.map((d) => (
+                          <option key={d._id} value={d._id}>
+                            {d.userId?.name || "Driver"} (Lic: {d.licenseNumber})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Right: Status Pill + Remove */}
+                  <div className="flex items-center justify-end gap-2 shrink-0">
+                    {isReady ? (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Ready
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        Needs driver
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onRemoveTruck(idx)}
+                      className="text-on-surface-variant hover:text-red-600 hover:bg-red-50 p-1 rounded-lg transition-colors cursor-pointer"
+                      title="Remove truck"
+                    >
+                      <span className="material-symbols-outlined text-[18px] block">close</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {(errors.driverIds || errors.pairing) && (
+        <p className="text-red-500 text-[11px] font-medium">
+          {errors.pairing || errors.driverIds}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function Trips() {
   const { user, logout } = useAuth();
   const { showSuccess, showError } = useToast();
@@ -43,12 +284,22 @@ export default function Trips() {
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [editSubmitError, setEditSubmitError] = useState("");
 
-  // Derive busy trucks & drivers from all active trips
+  // Derive busy trucks & drivers from all active trips (excluding legs already completed)
   const { busyTruckIdSet, busyDriverIdSet } = useMemo(() => {
     const truckSet = new Set();
     const driverSet = new Set();
     (trips || []).forEach((trip) => {
       if (["ON_TRIP", "ACTIVE", "DRIVER_ENDED"].includes(trip.status)) {
+        if (Array.isArray(trip.assignments) && trip.assignments.length > 0) {
+          trip.assignments.forEach((a) => {
+            if (a.status === "COMPLETED") return;
+            const tId = typeof a.truckId === "object" && a.truckId !== null ? a.truckId._id : a.truckId;
+            const dId = typeof a.driverId === "object" && a.driverId !== null ? a.driverId._id : a.driverId;
+            if (tId) truckSet.add(tId.toString());
+            if (dId) driverSet.add(dId.toString());
+          });
+          return;
+        }
         if (Array.isArray(trip.truckIds)) {
           trip.truckIds.forEach((t) => {
             const id = typeof t === "object" && t !== null ? t._id : t;
@@ -560,13 +811,14 @@ export default function Trips() {
       setEditSubmitError("At least one truck must be assigned.");
       return;
     }
-    if (!editTripForm.driverIds?.length) {
+    const validEditDrivers = (editTripForm.driverIds || []).filter(Boolean);
+    if (!validEditDrivers.length) {
       setEditSubmitError("At least one driver must be assigned.");
       return;
     }
-    if (editTripForm.truckIds.length !== editTripForm.driverIds.length) {
+    if (editTripForm.truckIds.length !== validEditDrivers.length) {
       setEditSubmitError(
-        `Each truck requires an assigned driver (${editTripForm.truckIds.length} trucks, ${editTripForm.driverIds.length} drivers).`
+        `Each truck requires an assigned driver (${editTripForm.truckIds.length} trucks, ${validEditDrivers.length} drivers).`
       );
       return;
     }
@@ -608,6 +860,21 @@ export default function Trips() {
       fetchTripsAndResources();
     } catch (error) {
       showError("Failed to update trip status: " + (error.response?.data?.message || "Unknown error"));
+    }
+  };
+
+  const handleConfirmTruckEnd = async (tripId, truckId) => {
+    try {
+      const res = await axiosClient.patch(`/trips/${tripId}/confirm-end`, { truckId });
+      const updatedTrip = res.data.data;
+      if (updatedTrip?.status === "COMPLETED") {
+        showSuccess("Final truck confirmed — trip completed & report generated!");
+      } else {
+        showSuccess("Truck end request accepted. Trip continues for remaining truck(s).");
+      }
+      fetchTripsAndResources();
+    } catch (error) {
+      showError("Failed to accept truck end: " + (error.response?.data?.message || "Unknown error"));
     }
   };
 
@@ -845,7 +1112,7 @@ export default function Trips() {
                     <span className="text-[11px] font-bold uppercase tracking-wider">On Trip</span>
                   </div>
                   <div className="text-[24px] font-bold text-on-surface">
-                    {trips.filter((t) => t.status === "ON_TRIP").length}
+                    {trips.filter((t) => ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"].includes(t.status)).length}
                   </div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-outline-variant/50 shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-emerald-500">
@@ -887,6 +1154,7 @@ export default function Trips() {
                   >
                     <option value="ALL">All Statuses</option>
                     <option value="ON_TRIP">On Trip</option>
+                    <option value="DRIVER_ENDED">End Requested</option>
                     <option value="COMPLETED">Completed</option>
                     <option value="CANCELLED">Cancelled</option>
                   </select>
@@ -1040,12 +1308,18 @@ export default function Trips() {
                                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${
                                   trip.status === "ON_TRIP"
                                     ? "bg-blue-50 text-blue-700 border-blue-200"
+                                    : trip.status === "DRIVER_ENDED"
+                                    ? "bg-amber-50 text-amber-700 border-amber-200"
                                     : trip.status === "COMPLETED"
                                     ? "bg-green-50 text-green-700 border-green-200"
                                     : "bg-surface-container-high text-on-surface border-outline-variant"
                                 }`}
                               >
-                                {trip.status === "ON_TRIP" ? "On Trip" : trip.status}
+                                {trip.status === "ON_TRIP"
+                                  ? "On Trip"
+                                  : trip.status === "DRIVER_ENDED"
+                                  ? "End Requested"
+                                  : trip.status}
                               </span>
                               <span className="text-[11px] font-medium text-on-surface-variant">
                                 {new Date(trip.startDate).toLocaleDateString("en-GB")}
@@ -1149,12 +1423,18 @@ export default function Trips() {
                             className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold border uppercase tracking-wider ${
                               selectedTrip.status === "ON_TRIP"
                                 ? "bg-blue-50 text-blue-700 border-blue-200"
+                                : selectedTrip.status === "DRIVER_ENDED"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
                                 : selectedTrip.status === "COMPLETED"
                                 ? "bg-green-50 text-green-700 border-green-200"
                                 : "bg-surface-container-high text-on-surface border-outline-variant"
                             }`}
                           >
-                            {selectedTrip.status === "ON_TRIP" ? "On Trip" : selectedTrip.status}
+                            {selectedTrip.status === "ON_TRIP"
+                              ? "On Trip"
+                              : selectedTrip.status === "DRIVER_ENDED"
+                              ? "End Requested"
+                              : selectedTrip.status}
                           </span>
                         </div>
 
@@ -1194,39 +1474,98 @@ export default function Trips() {
                                 Assigned Trucks & Drivers ({selectedTripTrucks.length})
                               </h4>
                             </div>
-                            <div className="space-y-2 max-h-[220px] overflow-y-auto custom-scrollbar">
+                            <div className="space-y-2 max-h-[260px] overflow-y-auto custom-scrollbar">
                               {selectedTripTrucks.map((truck, idx) => {
                                 const driver = selectedTripDrivers[idx];
+                                const assignment = (selectedTrip.assignments || []).find(
+                                  (a) =>
+                                    (a.truckId?._id || a.truckId)?.toString() ===
+                                    (truck?._id || truck)?.toString()
+                                );
+                                const legStatus =
+                                  assignment?.status ||
+                                  (selectedTrip.status === "COMPLETED"
+                                    ? "COMPLETED"
+                                    : selectedTrip.status === "DRIVER_ENDED"
+                                    ? "END_REQUESTED"
+                                    : "ON_TRIP");
+                                const canAcceptLeg =
+                                  legStatus === "END_REQUESTED" &&
+                                  !["COMPLETED", "CANCELLED"].includes(selectedTrip.status);
+
                                 return (
                                   <div
                                     key={truck?._id || idx}
-                                    className="bg-surface-container-low p-3 rounded-lg border border-outline-variant/30 flex justify-between items-center text-[13px]"
+                                    className={`p-3 rounded-lg border flex flex-col gap-2 text-[13px] ${
+                                      legStatus === "END_REQUESTED"
+                                        ? "bg-amber-50/60 border-amber-200"
+                                        : legStatus === "COMPLETED"
+                                        ? "bg-emerald-50/50 border-emerald-200"
+                                        : "bg-surface-container-low border-outline-variant/30"
+                                    }`}
                                   >
-                                    <div className="flex items-center gap-2.5">
-                                      <div className="w-6 h-6 rounded bg-white flex items-center justify-center text-on-surface shadow-xs font-mono font-bold text-[11px]">
-                                        #{idx + 1}
+                                    <div className="flex justify-between items-center gap-2">
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className="w-6 h-6 rounded bg-white flex items-center justify-center text-on-surface shadow-xs font-mono font-bold text-[11px] shrink-0">
+                                          #{idx + 1}
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="font-mono font-bold text-on-surface truncate">
+                                            {truck?.registrationNumber || "N/A"}
+                                          </p>
+                                          <p className="text-[11px] text-on-surface-variant">
+                                            {truck?.capacity ? `Capacity: ${truck.capacity}` : ""}
+                                          </p>
+                                        </div>
                                       </div>
-                                      <div>
-                                        <p className="font-mono font-bold text-on-surface">
-                                          {truck?.registrationNumber || "N/A"}
+                                      <div className="text-right min-w-0">
+                                        <p className="font-bold text-on-surface truncate">
+                                          {driver?.userId?.name ||
+                                            driver?.licenseNumber ||
+                                            "No Driver"}
                                         </p>
-                                        <p className="text-[11px] text-on-surface-variant">
-                                          {truck?.capacity ? `Capacity: ${truck.capacity}` : ""}
-                                        </p>
+                                        {driver?.licenseNumber && (
+                                          <p className="text-[11px] text-on-surface-variant">
+                                            Lic: {driver.licenseNumber}
+                                          </p>
+                                        )}
                                       </div>
                                     </div>
-                                    <div className="text-right">
-                                      <p className="font-bold text-on-surface">
-                                        {driver?.userId?.name ||
-                                          driver?.licenseNumber ||
-                                          "No Driver"}
-                                      </p>
-                                      {driver?.licenseNumber && (
-                                        <p className="text-[11px] text-on-surface-variant">
-                                          Lic: {driver.licenseNumber}
-                                        </p>
-                                      )}
-                                    </div>
+
+                                    {selectedTripTrucks.length > 1 && (
+                                      <div className="flex items-center justify-between pt-2 border-t border-outline-variant/20">
+                                        <span
+                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                                            legStatus === "END_REQUESTED"
+                                              ? "bg-amber-100 text-amber-800 border-amber-200"
+                                              : legStatus === "COMPLETED"
+                                              ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                              : "bg-blue-50 text-blue-700 border-blue-200"
+                                          }`}
+                                        >
+                                          {legStatus === "END_REQUESTED"
+                                            ? "End Requested"
+                                            : legStatus === "COMPLETED"
+                                            ? "Completed"
+                                            : "On Trip"}
+                                        </span>
+
+                                        {canAcceptLeg && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleConfirmTruckEnd(selectedTrip._id, truck._id)
+                                            }
+                                            className="px-2.5 py-1 rounded-md bg-secondary text-white text-[11px] font-semibold hover:bg-secondary/90 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                                          >
+                                            <span className="material-symbols-outlined text-[14px]">
+                                              check
+                                            </span>
+                                            Accept End
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -1268,8 +1607,26 @@ export default function Trips() {
                         </div>
 
                         <div className="pt-6 mt-4 border-t border-outline-variant/30 flex flex-col gap-3">
+                          {selectedTrip.status === "DRIVER_ENDED" && (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2 text-[12px] font-medium flex items-center gap-2">
+                              <span className="material-symbols-outlined text-[16px] text-amber-600">
+                                notifications_active
+                              </span>
+                              All drivers requested trip completion. Confirm to finalize and generate report.
+                            </div>
+                          )}
+                          {selectedTrip.status === "ON_TRIP" &&
+                            (selectedTrip.assignments || []).some((a) => a.status === "END_REQUESTED") && (
+                              <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2 text-[12px] font-medium flex items-center gap-2">
+                                <span className="material-symbols-outlined text-[16px] text-amber-600">
+                                  pending_actions
+                                </span>
+                                {(selectedTrip.assignments || []).filter((a) => a.status !== "ON_TRIP").length} of{" "}
+                                {selectedTrip.assignments.length} trucks requested/completed end. Trip continues until remaining truck(s) finish.
+                              </div>
+                            )}
                           <div className="flex gap-3 w-full">
-                            {selectedTrip.status === "ON_TRIP" && (
+                            {["ON_TRIP", "ACTIVE", "DRIVER_ENDED"].includes(selectedTrip.status) && (
                               <>
                                 <button
                                   onClick={() => handleStatusChange(selectedTrip._id, "COMPLETED")}
@@ -1278,7 +1635,9 @@ export default function Trips() {
                                   <span className="material-symbols-outlined text-[18px]">
                                     done_all
                                   </span>{" "}
-                                  Complete Trip
+                                  {selectedTrip.status === "DRIVER_ENDED"
+                                    ? "Confirm & Complete"
+                                    : "Complete Trip"}
                                 </button>
                                 <button
                                   onClick={() => handleStatusChange(selectedTrip._id, "CANCELLED")}
@@ -1310,13 +1669,15 @@ export default function Trips() {
                               <span className="material-symbols-outlined text-[18px]">delete</span>{" "}
                               Delete Trip
                             </button>
-                            <button
-                              onClick={() => handleOpenEditModal(selectedTrip)}
-                              className="flex-1 bg-surface-container-low text-on-surface font-medium text-[13px] py-2 rounded-lg border border-outline-variant/50 hover:bg-surface-variant transition-colors flex items-center justify-center gap-2"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">edit</span>{" "}
-                              Edit Trip
-                            </button>
+                            {!["COMPLETED", "CANCELLED"].includes(selectedTrip.status) && (
+                              <button
+                                onClick={() => handleOpenEditModal(selectedTrip)}
+                                className="flex-1 bg-surface-container-low text-on-surface font-medium text-[13px] py-2 rounded-lg border border-outline-variant/50 hover:bg-surface-variant transition-colors flex items-center justify-center gap-2"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">edit</span>{" "}
+                                Edit Trip
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1332,7 +1693,7 @@ export default function Trips() {
       {/* Add Trip Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 md:p-10">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[650px] max-h-[92vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[720px] max-h-[92vh] flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-lowest shrink-0">
               <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-secondary text-[24px]">route</span>
@@ -1412,309 +1773,37 @@ export default function Trips() {
                   </div>
 
                   {/* Multi-Truck & Multi-Driver Assignment Section */}
-                  <div className="space-y-4 col-span-full bg-white p-4 rounded-xl border border-outline-variant/40 shadow-sm">
-                    <div className="flex justify-between items-center border-b border-outline-variant/20 pb-2">
-                      <h4 className="text-[13px] font-bold text-on-surface-variant uppercase tracking-wider">
-                        Fleet & Crew Assignment
-                      </h4>
-                      {newTripTotalCapacity > 0 && (
-                        <span className="text-[11px] font-bold text-secondary bg-secondary/10 px-2 py-0.5 rounded-full">
-                          Combined Capacity: {newTripTotalCapacity} Tons
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Truck Selector */}
-                      <div className="space-y-2">
-                        <label className="text-[12px] font-semibold text-on-surface-variant flex justify-between items-center">
-                          <span>
-                            Select Trucks <span className="text-red-500">*</span>
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-on-surface-variant font-normal">
-                              {newTripForm.truckIds.length} selected
-                            </span>
-                            {newTripForm.truckIds.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setNewTripForm((prev) => ({ ...prev, truckIds: [] }))}
-                                className="text-[11px] text-red-500 hover:text-red-700 hover:underline font-medium flex items-center gap-0.5 cursor-pointer"
-                              >
-                                <span className="material-symbols-outlined text-[12px]">delete_sweep</span>
-                                Unselect All
-                              </button>
-                            )}
-                          </div>
-                        </label>
-                        <select
-                          value=""
-                          onChange={(e) => handleAddTruck(e.target.value)}
-                          className={`w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] font-mono border ${
-                            formErrors.truckIds
-                              ? "border-red-500 focus:border-red-500 ring-1 ring-red-500/20"
-                              : "border-outline-variant/50 focus:border-secondary"
-                          }`}
-                        >
-                          <option value="">
-                            {availableTrucks.filter((t) => !newTripForm.truckIds.includes(t._id))
-                              .length > 0
-                              ? "+ Choose Truck to Add"
-                              : "-- No More Available Trucks --"}
-                          </option>
-                          {availableTrucks
-                            .filter((t) => !newTripForm.truckIds.includes(t._id))
-                            .map((t) => {
-                              const dObj = (availableDrivers || []).find((d) => {
-                                const dId = t.currentDriverId?._id || t.currentDriverId;
-                                return dId && dId.toString() === d._id.toString();
-                              });
-                              return (
-                                <option key={t._id} value={t._id}>
-                                  {t.registrationNumber} ({t.capacity || "N/A"}{t.truckType ? `, ${t.truckType}` : ""})
-                                  {dObj ? ` • Assigned Driver: ${dObj.userId?.name || dObj.licenseNumber}` : ""}
-                                </option>
-                              );
-                            })}
-                        </select>
-                        {formErrors.truckIds && (
-                          <p className="text-red-500 text-[11px] mt-1 font-medium">
-                            {formErrors.truckIds}
-                          </p>
-                        )}
-
-                        {/* Selected Trucks List */}
-                        <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar pt-1">
-                          {selectedNewTrucks.map((truck, idx) => (
-                            <div
-                              key={truck._id}
-                              className="flex items-center justify-between bg-surface-container-low px-3 py-2 rounded-lg border border-outline-variant/30 text-[12px]"
-                            >
-                              <div className="flex items-center gap-2 overflow-hidden">
-                                <span className="w-5 h-5 rounded-full bg-white flex items-center justify-center font-bold text-[10px] text-on-surface shrink-0">
-                                  {idx + 1}
-                                </span>
-                                <div className="truncate">
-                                  <span className="font-mono font-bold text-on-surface">
-                                    {truck.registrationNumber}
-                                  </span>
-                                  <span className="text-on-surface-variant ml-2 text-[11px]">
-                                    ({truck.capacity || "N/A"})
-                                  </span>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveTruck(idx)}
-                                className="text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
-                                title="Unselect truck"
-                              >
-                                <span className="material-symbols-outlined text-[13px]">close</span>
-                                <span>Unselect</span>
-                              </button>
-                            </div>
-                          ))}
-                          {selectedNewTrucks.length === 0 && (
-                            <p className="text-[12px] text-on-surface-variant/60 italic py-1">
-                              No trucks assigned yet. Add one or more trucks.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Driver Selector */}
-                      <div className="space-y-2">
-                        <label className="text-[12px] font-semibold text-on-surface-variant flex justify-between items-center">
-                          <span>
-                            Select Drivers <span className="text-red-500">*</span>
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-on-surface-variant font-normal">
-                              {newTripForm.driverIds.length} selected
-                            </span>
-                            {newTripForm.driverIds.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setNewTripForm((prev) => ({ ...prev, driverIds: [] }))}
-                                className="text-[11px] text-red-500 hover:text-red-700 hover:underline font-medium flex items-center gap-0.5 cursor-pointer"
-                              >
-                                <span className="material-symbols-outlined text-[12px]">delete_sweep</span>
-                                Unselect All
-                              </button>
-                            )}
-                          </div>
-                        </label>
-                        <select
-                          value=""
-                          onChange={(e) => handleAddDriver(e.target.value)}
-                          className={`w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border ${
-                            formErrors.driverIds
-                              ? "border-red-500 focus:border-red-500 ring-1 ring-red-500/20"
-                              : "border-outline-variant/50 focus:border-secondary"
-                          }`}
-                        >
-                          <option value="">
-                            {availableDrivers.filter((d) => !newTripForm.driverIds.includes(d._id)).length > 0
-                              ? "+ Choose Driver to Add"
-                              : "-- No More Available Drivers --"}
-                          </option>
-                          {availableDrivers
-                            .filter((d) => !newTripForm.driverIds.includes(d._id))
-                            .map((d) => {
-                              const assignedTruck = (allTrucks || []).find((t) => {
-                                const dId = t.currentDriverId?._id || t.currentDriverId;
-                                return dId && dId.toString() === d._id.toString();
-                              });
-                              return (
-                                <option key={d._id} value={d._id}>
-                                  {d.userId?.name || "Driver"} (Lic: {d.licenseNumber})
-                                  {assignedTruck ? ` • Assigned Truck: ${assignedTruck.registrationNumber}` : ""}
-                                </option>
-                              );
-                            })}
-                        </select>
-                        {formErrors.driverIds && (
-                          <p className="text-red-500 text-[11px] mt-1 font-medium">
-                            {formErrors.driverIds}
-                          </p>
-                        )}
-
-                        {/* Selected Drivers List */}
-                        <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar pt-1">
-                          {selectedNewDrivers.map((driver, idx) => (
-                            <div
-                              key={driver._id}
-                              className="flex items-center justify-between bg-surface-container-low px-3 py-2 rounded-lg border border-outline-variant/30 text-[12px]"
-                            >
-                              <div className="flex items-center gap-2 overflow-hidden">
-                                <span className="w-5 h-5 rounded-full bg-white flex items-center justify-center font-bold text-[10px] text-on-surface shrink-0">
-                                  {idx + 1}
-                                </span>
-                                <div className="truncate">
-                                  <span className="font-bold text-on-surface">
-                                    {driver.userId?.name || "Driver"}
-                                  </span>
-                                  <span className="text-on-surface-variant ml-2 text-[11px]">
-                                    (Lic: {driver.licenseNumber})
-                                  </span>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveDriver(idx)}
-                                className="text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
-                                title="Unselect driver"
-                              >
-                                <span className="material-symbols-outlined text-[13px]">close</span>
-                                <span>Unselect</span>
-                              </button>
-                            </div>
-                          ))}
-                          {selectedNewDrivers.length === 0 && (
-                            <p className="text-[12px] text-on-surface-variant/60 italic py-1">
-                              No drivers assigned yet. Add one or more drivers.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Truck-Driver Pairing Status and Feedback */}
-                    {newTripForm.truckIds.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-outline-variant/20">
-                        <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant/30 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="font-bold text-[12px] flex items-center gap-1.5 text-on-surface">
-                              <span className="material-symbols-outlined text-[16px] text-primary">
-                                link
-                              </span>
-                              Truck & Driver Pairings ({newTripForm.truckIds.length} Truck{newTripForm.truckIds.length > 1 ? "s" : ""})
-                            </p>
-                            <span className="text-[11px] text-on-surface-variant">
-                              Select or change driver for each truck
-                            </span>
-                          </div>
-
-                          <div className="space-y-2">
-                            {newTripForm.truckIds.map((truckId, idx) => {
-                              const truck = (allTrucks || []).find((t) => t._id === truckId);
-                              const assignedDriverId = newTripForm.driverIds[idx] || "";
-
-                              // Drivers available for this specific truck: available drivers not chosen for OTHER trucks in this trip
-                              const otherChosenDriverIds = newTripForm.driverIds.filter(
-                                (dId, dIdx) => dIdx !== idx && Boolean(dId)
-                              );
-                              const selectableDrivers = (availableDrivers || []).filter(
-                                (d) => !otherChosenDriverIds.includes(d._id)
-                              );
-
-                              return (
-                                <div
-                                  key={truckId}
-                                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white rounded-lg border border-outline-variant/30 shadow-2xs text-[12px]"
-                                >
-                                  {/* Truck info */}
-                                  <div className="flex items-center gap-2 min-w-[170px]">
-                                    <span className="w-5 h-5 rounded-full bg-surface-container-high flex items-center justify-center font-bold text-[10px] text-on-surface shrink-0">
-                                      #{idx + 1}
-                                    </span>
-                                    <div>
-                                      <p className="font-mono font-bold text-on-surface">
-                                        {truck?.registrationNumber || "Truck"}
-                                      </p>
-                                      <p className="text-[10px] text-on-surface-variant">
-                                        {truck?.capacity ? `Cap: ${truck.capacity}` : "No capacity"}
-                                        {truck?.truckType ? ` • ${truck.truckType}` : ""}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {/* Driver dropdown switcher */}
-                                  <div className="flex-1 flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-outline-variant text-[16px] hidden sm:inline">
-                                      swap_horiz
-                                    </span>
-                                    <select
-                                      value={assignedDriverId}
-                                      onChange={(e) => handleAssignDriverToTruck(idx, e.target.value)}
-                                      className={`flex-1 h-9 px-2.5 bg-surface-container-lowest rounded-md text-[12px] border outline-none font-medium transition-all ${
-                                        !assignedDriverId
-                                          ? "border-amber-300 bg-amber-50/40 text-amber-900 focus:border-amber-500"
-                                          : "border-outline-variant/50 focus:border-secondary text-on-surface"
-                                      }`}
-                                    >
-                                      <option value="">-- Choose Driver for this Truck --</option>
-                                      {selectableDrivers.map((d) => (
-                                        <option key={d._id} value={d._id}>
-                                          {d.userId?.name || "Driver"} (Lic: {d.licenseNumber})
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
-                                  {/* Remove Truck Button */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveTruck(idx)}
-                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1 self-end sm:self-center cursor-pointer"
-                                    title="Unselect truck"
-                                  >
-                                    <span className="material-symbols-outlined text-[14px]">close</span>
-                                    <span>Unselect</span>
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
+                  <FleetAssignmentSection
+                    truckIds={newTripForm.truckIds}
+                    driverIds={newTripForm.driverIds}
+                    allTrucks={allTrucks}
+                    allDrivers={allDrivers}
+                    selectableTrucks={availableTrucks.filter(
+                      (t) => !newTripForm.truckIds.includes(t._id)
                     )}
-                    {formErrors.pairing && (
-                      <p className="text-red-500 text-[11px] mt-1 font-medium">
-                        {formErrors.pairing}
-                      </p>
-                    )}
-                  </div>
+                    getSelectableDriversForRow={(idx) => {
+                      const otherChosenDriverIds = newTripForm.driverIds.filter(
+                        (dId, dIdx) => dIdx !== idx && Boolean(dId)
+                      );
+                      return (availableDrivers || []).filter(
+                        (d) => !otherChosenDriverIds.includes(d._id)
+                      );
+                    }}
+                    totalCapacity={newTripTotalCapacity}
+                    onAddTruck={handleAddTruck}
+                    onRemoveTruck={handleRemoveTruck}
+                    onRemoveAll={() => {
+                      setNewTripForm((prev) => ({ ...prev, truckIds: [], driverIds: [] }));
+                      setFormErrors((prev) => ({
+                        ...prev,
+                        truckIds: "",
+                        driverIds: "",
+                        pairing: "",
+                      }));
+                    }}
+                    onAssignDriver={handleAssignDriverToTruck}
+                    errors={formErrors}
+                  />
 
                   {/* Cargo Section */}
                   <div className="space-y-4 col-span-full bg-white p-4 rounded-xl border border-outline-variant/40 shadow-sm">
@@ -1843,15 +1932,13 @@ export default function Trips() {
                       isSubmitting ||
                       !!newTripCapacityError ||
                       newTripForm.truckIds.length === 0 ||
-                      newTripForm.driverIds.length === 0 ||
-                      newTripForm.truckIds.length !== newTripForm.driverIds.length
+                      newTripForm.driverIds.filter(Boolean).length !== newTripForm.truckIds.length
                     }
                     className={`flex-1 px-4 py-3 bg-[#0a0a0a] text-white rounded-lg font-medium text-[14px] hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm ${
                       isSubmitting ||
                       newTripCapacityError ||
                       newTripForm.truckIds.length === 0 ||
-                      newTripForm.driverIds.length === 0 ||
-                      newTripForm.truckIds.length !== newTripForm.driverIds.length
+                      newTripForm.driverIds.filter(Boolean).length !== newTripForm.truckIds.length
                         ? "opacity-60 cursor-not-allowed"
                         : ""
                     }`}
@@ -1863,7 +1950,7 @@ export default function Trips() {
                     ) : (
                       <>
                         <span className="material-symbols-outlined text-[20px]">route</span>
-                        Dispatch Trip ({newTripForm.truckIds.length} Trucks)
+                        Dispatch Trip ({newTripForm.truckIds.length} {newTripForm.truckIds.length === 1 ? "Truck" : "Trucks"})
                       </>
                     )}
                   </button>
@@ -1877,7 +1964,7 @@ export default function Trips() {
       {/* Edit Trip Modal */}
       {isEditModalOpen && editTripForm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 md:p-10">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[650px] max-h-[92vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[720px] max-h-[92vh] flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-lowest shrink-0">
               <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-secondary text-[24px]">edit</span>
@@ -1936,259 +2023,42 @@ export default function Trips() {
                   </div>
 
                   {/* Multi-Truck & Multi-Driver Assignment in Edit */}
-                  <div className="space-y-4 col-span-full bg-white p-4 rounded-xl border border-outline-variant/40 shadow-sm">
-                    <div className="flex justify-between items-center border-b border-outline-variant/20 pb-2">
-                      <h4 className="text-[13px] font-bold text-on-surface-variant uppercase tracking-wider">
-                        Fleet & Crew Assignment
-                      </h4>
-                      {editTripTotalCapacity > 0 && (
-                        <span className="text-[11px] font-bold text-secondary bg-secondary/10 px-2 py-0.5 rounded-full">
-                          Combined Capacity: {editTripTotalCapacity} Tons
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Truck Select in Edit */}
-                      <div className="space-y-2">
-                        <label className="text-[12px] font-semibold text-on-surface-variant flex justify-between items-center">
-                          <span>Assign Trucks</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-on-surface-variant font-normal">
-                              {editTripForm.truckIds.length} assigned
-                            </span>
-                            {editTripForm.truckIds.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setEditTripForm((prev) => ({ ...prev, truckIds: [] }))}
-                                className="text-[11px] text-red-500 hover:text-red-700 hover:underline font-medium flex items-center gap-0.5 cursor-pointer"
-                              >
-                                <span className="material-symbols-outlined text-[12px]">delete_sweep</span>
-                                Unselect All
-                              </button>
-                            )}
-                          </div>
-                        </label>
-                        <select
-                          value=""
-                          onChange={(e) => handleAddEditTruck(e.target.value)}
-                          className="w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] font-mono border border-outline-variant/50 focus:border-secondary"
-                        >
-                          <option value="">+ Add a Truck...</option>
-                          {allTrucks
-                            .filter(
-                              (t) =>
-                                (!busyTruckIdSet.has(t._id.toString()) ||
-                                  editTripForm.truckIds.includes(t._id)) &&
-                                (t.status === "AVAILABLE" ||
-                                  t.status === "ACTIVE" ||
-                                  editTripForm.truckIds.includes(t._id)) &&
-                                !editTripForm.truckIds.includes(t._id)
-                            )
-                            .map((t) => {
-                              const dObj = (allDrivers || []).find((d) => {
-                                const dId = t.currentDriverId?._id || t.currentDriverId;
-                                return dId && dId.toString() === d._id.toString();
-                              });
-                              return (
-                                <option key={t._id} value={t._id}>
-                                  {t.registrationNumber} ({t.capacity || "N/A"})
-                                  {dObj ? ` • Assigned Driver: ${dObj.userId?.name || dObj.licenseNumber}` : ""}
-                                </option>
-                              );
-                            })}
-                        </select>
-                        <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar pt-1">
-                          {selectedEditTrucks.map((truck, idx) => (
-                            <div
-                              key={truck._id}
-                              className="flex items-center justify-between bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant/30 text-[12px]"
-                            >
-                              <span className="font-mono font-bold text-on-surface truncate">
-                                #{idx + 1} {truck.registrationNumber} ({truck.capacity || "N/A"})
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveEditTruck(idx)}
-                                className="text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
-                                title="Unselect truck"
-                              >
-                                <span className="material-symbols-outlined text-[13px]">close</span>
-                                <span>Unselect</span>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Driver Select in Edit */}
-                      <div className="space-y-2">
-                        <label className="text-[12px] font-semibold text-on-surface-variant flex justify-between items-center">
-                          <span>Assign Drivers</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-on-surface-variant font-normal">
-                              {editTripForm.driverIds.length} assigned
-                            </span>
-                            {editTripForm.driverIds.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setEditTripForm((prev) => ({ ...prev, driverIds: [] }))}
-                                className="text-[11px] text-red-500 hover:text-red-700 hover:underline font-medium flex items-center gap-0.5 cursor-pointer"
-                              >
-                                <span className="material-symbols-outlined text-[12px]">delete_sweep</span>
-                                Unselect All
-                              </button>
-                            )}
-                          </div>
-                        </label>
-                        <select
-                          value=""
-                          onChange={(e) => handleAddEditDriver(e.target.value)}
-                          className="w-full h-10 px-3 bg-surface-container-lowest rounded-lg outline-none transition-all text-[13px] border border-outline-variant/50 focus:border-secondary"
-                        >
-                          <option value="">+ Add a Driver...</option>
-                          {allDrivers
-                            .filter(
-                              (d) =>
-                                (!busyDriverIdSet.has(d._id.toString()) ||
-                                  editTripForm.driverIds.includes(d._id)) &&
-                                (d.status === "AVAILABLE" ||
-                                  d.status === "ACTIVE" ||
-                                  editTripForm.driverIds.includes(d._id)) &&
-                                !editTripForm.driverIds.includes(d._id)
-                            )
-                            .map((d) => {
-                              const assignedTruck = (allTrucks || []).find((t) => {
-                                const dId = t.currentDriverId?._id || t.currentDriverId;
-                                return dId && dId.toString() === d._id.toString();
-                              });
-                              return (
-                                <option key={d._id} value={d._id}>
-                                  {d.userId?.name || "Driver"} (Lic: {d.licenseNumber})
-                                  {assignedTruck ? ` • Assigned Truck: ${assignedTruck.registrationNumber}` : ""}
-                                </option>
-                              );
-                            })}
-                        </select>
-                        <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar pt-1">
-                          {selectedEditDrivers.map((driver, idx) => (
-                            <div
-                              key={driver._id}
-                              className="flex items-center justify-between bg-surface-container-low px-3 py-1.5 rounded-lg border border-outline-variant/30 text-[12px]"
-                            >
-                              <span className="font-bold text-on-surface truncate">
-                                #{idx + 1} {driver.userId?.name || "Driver"} ({driver.licenseNumber}
-                                )
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveEditDriver(idx)}
-                                className="text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
-                                title="Unselect driver"
-                              >
-                                <span className="material-symbols-outlined text-[13px]">close</span>
-                                <span>Unselect</span>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {editTripForm.truckIds.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-outline-variant/20">
-                        <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant/30 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="font-bold text-[12px] flex items-center gap-1.5 text-on-surface">
-                              <span className="material-symbols-outlined text-[16px] text-primary">
-                                link
-                              </span>
-                              Assigned Truck & Driver Pairings ({editTripForm.truckIds.length} Truck{editTripForm.truckIds.length > 1 ? "s" : ""})
-                            </p>
-                            <span className="text-[11px] text-on-surface-variant">
-                              Select or change driver for each truck
-                            </span>
-                          </div>
-
-                          <div className="space-y-2">
-                            {editTripForm.truckIds.map((truckId, idx) => {
-                              const truck = (allTrucks || []).find((t) => t._id === truckId);
-                              const assignedDriverId = editTripForm.driverIds[idx] || "";
-
-                              const otherChosenDriverIds = editTripForm.driverIds.filter(
-                                (dId, dIdx) => dIdx !== idx && Boolean(dId)
-                              );
-                              const selectableDrivers = (allDrivers || []).filter(
-                                (d) =>
-                                  (!busyDriverIdSet.has(d._id.toString()) ||
-                                    editTripForm.driverIds.includes(d._id)) &&
-                                  (d.status === "AVAILABLE" ||
-                                    d.status === "ACTIVE" ||
-                                    editTripForm.driverIds.includes(d._id)) &&
-                                  !otherChosenDriverIds.includes(d._id)
-                              );
-
-                              return (
-                                <div
-                                  key={truckId}
-                                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white rounded-lg border border-outline-variant/30 shadow-2xs text-[12px]"
-                                >
-                                  {/* Truck info */}
-                                  <div className="flex items-center gap-2 min-w-[170px]">
-                                    <span className="w-5 h-5 rounded-full bg-surface-container-high flex items-center justify-center font-bold text-[10px] text-on-surface shrink-0">
-                                      #{idx + 1}
-                                    </span>
-                                    <div>
-                                      <p className="font-mono font-bold text-on-surface">
-                                        {truck?.registrationNumber || "Truck"}
-                                      </p>
-                                      <p className="text-[10px] text-on-surface-variant">
-                                        {truck?.capacity ? `Cap: ${truck.capacity}` : "No capacity"}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {/* Driver dropdown switcher */}
-                                  <div className="flex-1 flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-outline-variant text-[16px] hidden sm:inline">
-                                      swap_horiz
-                                    </span>
-                                    <select
-                                      value={assignedDriverId}
-                                      onChange={(e) => handleAssignEditDriverToTruck(idx, e.target.value)}
-                                      className={`flex-1 h-9 px-2.5 bg-surface-container-lowest rounded-md text-[12px] border outline-none font-medium transition-all ${
-                                        !assignedDriverId
-                                          ? "border-amber-300 bg-amber-50/40 text-amber-900 focus:border-amber-500"
-                                          : "border-outline-variant/50 focus:border-secondary text-on-surface"
-                                      }`}
-                                    >
-                                      <option value="">-- Choose Driver for this Truck --</option>
-                                      {selectableDrivers.map((d) => (
-                                        <option key={d._id} value={d._id}>
-                                          {d.userId?.name || "Driver"} (Lic: {d.licenseNumber})
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
-                                  {/* Remove Truck Button */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveEditTruck(idx)}
-                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1 self-end sm:self-center cursor-pointer"
-                                    title="Unselect truck"
-                                  >
-                                    <span className="material-symbols-outlined text-[14px]">close</span>
-                                    <span>Unselect</span>
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
+                  <FleetAssignmentSection
+                    truckIds={editTripForm.truckIds}
+                    driverIds={editTripForm.driverIds}
+                    allTrucks={allTrucks}
+                    allDrivers={allDrivers}
+                    selectableTrucks={allTrucks.filter(
+                      (t) =>
+                        (!busyTruckIdSet.has(t._id.toString()) ||
+                          editTripForm.truckIds.includes(t._id)) &&
+                        (t.status === "AVAILABLE" ||
+                          t.status === "ACTIVE" ||
+                          editTripForm.truckIds.includes(t._id)) &&
+                        !editTripForm.truckIds.includes(t._id)
                     )}
-                  </div>
+                    getSelectableDriversForRow={(idx) => {
+                      const otherChosenDriverIds = editTripForm.driverIds.filter(
+                        (dId, dIdx) => dIdx !== idx && Boolean(dId)
+                      );
+                      return (allDrivers || []).filter(
+                        (d) =>
+                          (!busyDriverIdSet.has(d._id.toString()) ||
+                            editTripForm.driverIds.includes(d._id)) &&
+                          (d.status === "AVAILABLE" ||
+                            d.status === "ACTIVE" ||
+                            editTripForm.driverIds.includes(d._id)) &&
+                          !otherChosenDriverIds.includes(d._id)
+                      );
+                    }}
+                    totalCapacity={editTripTotalCapacity}
+                    onAddTruck={handleAddEditTruck}
+                    onRemoveTruck={handleRemoveEditTruck}
+                    onRemoveAll={() =>
+                      setEditTripForm((prev) => ({ ...prev, truckIds: [], driverIds: [] }))
+                    }
+                    onAssignDriver={handleAssignEditDriverToTruck}
+                  />
 
                   <div className="space-y-4 col-span-full bg-white p-4 rounded-xl border border-outline-variant/40 shadow-sm">
                     <h4 className="text-[13px] font-bold text-on-surface-variant uppercase tracking-wider mb-2 border-b border-outline-variant/20 pb-2">
@@ -2282,15 +2152,13 @@ export default function Trips() {
                       isEditSubmitting ||
                       !!editTripCapacityError ||
                       editTripForm.truckIds.length === 0 ||
-                      editTripForm.driverIds.length === 0 ||
-                      editTripForm.truckIds.length !== editTripForm.driverIds.length
+                      editTripForm.driverIds.filter(Boolean).length !== editTripForm.truckIds.length
                     }
                     className={`flex-1 px-4 py-2 bg-[#0a0a0a] text-white rounded-lg font-medium text-[13px] hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-sm ${
                       isEditSubmitting ||
                       editTripCapacityError ||
                       editTripForm.truckIds.length === 0 ||
-                      editTripForm.driverIds.length === 0 ||
-                      editTripForm.truckIds.length !== editTripForm.driverIds.length
+                      editTripForm.driverIds.filter(Boolean).length !== editTripForm.truckIds.length
                         ? "opacity-60 cursor-not-allowed"
                         : ""
                     }`}

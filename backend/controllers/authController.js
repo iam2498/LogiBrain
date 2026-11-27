@@ -68,8 +68,11 @@ exports.registerOwner = async (req, res, next) => {
 exports.login = async (req, res, next) => {
   try {
     const { identifier, password } = loginSchema.parse(req.body);
+    const normalizedEmail = identifier.toLowerCase();
 
-    const user = await User.findOne({ $or: [{ email: identifier }, { phone: identifier }] });
+    const user = await User.findOne({
+      $or: [{ email: identifier }, { email: normalizedEmail }, { phone: identifier }],
+    });
     if (!user || !user.isActive) {
       return res
         .status(401)

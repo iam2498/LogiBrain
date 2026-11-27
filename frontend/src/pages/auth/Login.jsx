@@ -41,6 +41,8 @@ export default function Login() {
       errors.password = "Password cannot be empty";
     } else if (password.length < 8) {
       errors.password = "Password must be at least 8 characters";
+    } else if (!password.trim()) {
+      errors.password = "Password cannot be only spaces";
     }
 
     setFieldErrors(errors);
@@ -49,11 +51,13 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
     setError("");
+    if (!validate()) return;
     setIsLoading(true);
     try {
-      const user = await login(identifier, password);
+      const trimmedId = identifier.trim();
+      const normalizedId = trimmedId.includes("@") ? trimmedId.toLowerCase() : trimmedId;
+      const user = await login(normalizedId, password);
       showSuccess(`Welcome back, ${user.name || "User"}!`);
       if (user.role === "ADMIN") {
         navigate("/admin/dashboard");
@@ -154,12 +158,6 @@ export default function Login() {
               {fieldErrors.password && <p className="text-red-500 text-xs mt-1">{fieldErrors.password}</p>}
             </div>
 
-            {/* Remember Me */}
-            <div className="flex items-center">
-              <input className="w-4 h-4 rounded border-outline-variant text-primary focus:ring-primary focus:ring-offset-surface-container-lowest bg-surface" id="remember" type="checkbox" />
-              <label className="ml-2 font-body-sm text-[14px] text-on-surface-variant" htmlFor="remember">Remember me for 30 days</label>
-            </div>
-
             {/* Submit Button */}
             <button 
               className={`w-full h-[48px] bg-primary text-on-primary rounded-[16px] font-label-md text-[14px] font-medium flex items-center justify-center gap-2 hover:shadow-[0px_4px_6px_rgba(15,23,42,0.12)] transition-all active:scale-[0.98] ${isLoading ? 'opacity-80 cursor-not-allowed animate-pulse' : ''}`}
@@ -171,27 +169,8 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Divider */}
-          <div className="my-6 flex items-center">
-            <div className="flex-grow border-t border-surface-variant"></div>
-            <span className="mx-4 font-label-sm text-[12px] font-semibold text-outline">OR CONTINUE WITH</span>
-            <div className="flex-grow border-t border-surface-variant"></div>
-          </div>
-
-          {/* Social Auth */}
-          <div className="grid grid-cols-2 gap-4">
-            <button className="h-[48px] bg-surface-container-lowest border border-surface-variant rounded-[16px] flex items-center justify-center gap-2 hover:bg-surface transition-colors" type="button">
-              <img alt="Google" className="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCIQo5Ll-McJX6jgFuIGclv7YdQi6PM-9H3AWmerT5IwcW0mrZOr1llX2rAvsKMh99Ah5dqD3pMtAnxlSna9kbB5-nWbxMU-7eFtBHMR2ROhtkf5z_1NNRXsLZUsz4NyCeZKs-SoxEKaeZ6IULJpdI4XCtblRvno01g0LPzhVYVJgTB6SG8BOZTLebj-lE5jfi996MiFDTq3fTvfWHpBUDze93qfZwupIgIEOmjv_F_1O1o5XEK1u_N" />
-              <span className="font-label-md text-[14px] font-medium text-on-surface">Google</span>
-            </button>
-            <button className="h-[48px] bg-surface-container-lowest border border-surface-variant rounded-[16px] flex items-center justify-center gap-2 hover:bg-surface transition-colors" type="button">
-              <img alt="Microsoft" className="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAEFQgl7ntsNEagLD3CmUV5KB3Ot1W57q36Ckj_Y3eOm4bI73QBVwrS-D_cmAO1x09q4_ZjK1twoq_5lQDZrND2USPj-Jc_ixSu4KE9P7JYOV9Y8eIyLg3Pct1S_zJx8XG8AY40koYU4V5_uyf53fB0rXFlXb_9GW08vTLLCisipFA49SugjTVPciSjbY75_NvhLy9W-xttTIg9p4-XRgk9v3SjfzPDa89FkQ4SsSlrLeGi7Fp1R4Bu" />
-              <span className="font-label-md text-[14px] font-medium text-on-surface">Microsoft</span>
-            </button>
-          </div>
-
           {/* Footer Link */}
-          <div className="mt-10 text-center">
+          <div className="mt-8 text-center">
             <p className="font-body-sm text-[14px] text-on-surface-variant">
               Don't have an account? 
               <Link className="font-label-md text-[14px] font-medium text-primary hover:underline ml-1" to="/register">Create Account</Link>

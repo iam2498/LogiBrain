@@ -2,15 +2,32 @@ const mongoose = require("mongoose");
 
 const tripSchema = new mongoose.Schema(
   {
-    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
     truckIds: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "Truck", required: true }
+      { type: mongoose.Schema.Types.ObjectId, ref: "Truck", required: true },
     ],
     driverIds: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "Driver", required: true }
+      { type: mongoose.Schema.Types.ObjectId, ref: "Driver", required: true },
     ],
     truckId: { type: mongoose.Schema.Types.ObjectId, ref: "Truck" },
     driverId: { type: mongoose.Schema.Types.ObjectId, ref: "Driver" },
+    assignments: [
+      {
+        truckId: { type: mongoose.Schema.Types.ObjectId, ref: "Truck", required: true },
+        driverId: { type: mongoose.Schema.Types.ObjectId, ref: "Driver", required: true },
+        status: {
+          type: String,
+          enum: ["ON_TRIP", "END_REQUESTED", "COMPLETED"],
+          default: "ON_TRIP",
+        },
+        endRequestedAt: { type: Date },
+        completedAt: { type: Date },
+      },
+    ],
     source: { type: String, required: true },
     destination: { type: String, required: true },
     customer: { type: String },
@@ -24,11 +41,11 @@ const tripSchema = new mongoose.Schema(
     actualEndDate: { type: Date },
     status: {
       type: String,
-      enum: ["ON_TRIP", "COMPLETED", "CANCELLED"],
+      enum: ["ON_TRIP", "DRIVER_ENDED", "COMPLETED", "CANCELLED"],
       default: "ON_TRIP",
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 tripSchema.index({ ownerId: 1, status: 1 });

@@ -3,6 +3,7 @@ const {
   createExpense,
   getExpenses,
   getExpenseById,
+  updateExpense,
   deleteExpense,
 } = require("../controllers/expenseController");
 const authenticate = require("../middleware/authenticate");
@@ -20,7 +21,8 @@ router.post("/", upload.single("receipt"), createExpense);
 router.get("/", getExpenses);
 router.get("/:id", getExpenseById);
 
-// Only Owner can delete an expense
+// Only Owner can update or delete an expense
+router.put("/:id", authorize("OWNER"), upload.single("receipt"), updateExpense);
 router.delete("/:id", authorize("OWNER"), deleteExpense);
 
 module.exports = router;

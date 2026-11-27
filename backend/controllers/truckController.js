@@ -67,6 +67,10 @@ exports.getTrucks = async (req, res, next) => {
         trip.truckIds.forEach((id, index) => {
           if (id) {
             const sid = (id._id || id).toString();
+            const assignment = (trip.assignments || []).find(
+              a => (a.truckId?._id || a.truckId)?.toString() === sid
+            );
+            if (assignment && assignment.status === "COMPLETED") return;
             const driver = trip.driverIds && trip.driverIds[index] ? trip.driverIds[index] : null;
             activeTruckMap.set(sid, { trip, driver });
           }
@@ -74,6 +78,10 @@ exports.getTrucks = async (req, res, next) => {
       }
       if (trip.truckId) {
         const sid = (trip.truckId._id || trip.truckId).toString();
+        const assignment = (trip.assignments || []).find(
+          a => (a.truckId?._id || a.truckId)?.toString() === sid
+        );
+        if (assignment && assignment.status === "COMPLETED") return;
         const driver = trip.driverId || (trip.driverIds && trip.driverIds[0]) || null;
         if (!activeTruckMap.has(sid)) {
           activeTruckMap.set(sid, { trip, driver });

@@ -2,7 +2,7 @@ const errorHandler = (err, req, res, next) => {
   console.error(err.stack);
 
   let message = err.message || "Server Error";
-  let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  let statusCode = err.statusCode || (res.statusCode === 200 ? 500 : res.statusCode);
 
   if (err.name === 'ZodError') {
     statusCode = 400;

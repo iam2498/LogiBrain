@@ -26,23 +26,28 @@ export default function RegisterOwner() {
   const validate = () => {
     const errors = {};
     const name = formData.name.trim();
+    const phone = formData.phone.trim();
+    const email = formData.email.trim();
+    const businessName = formData.businessName.trim();
+    const businessAddress = formData.businessAddress.trim();
+
     if (!name) {
-      errors.name = "Username cannot be empty";
+      errors.name = "Full name cannot be empty";
     } else if (name.length < 3) {
-      errors.name = "Username must be at least 3 characters";
+      errors.name = "Full name must be at least 3 characters";
     } else if (/^\d+$/.test(name)) {
-      errors.name = "Username cannot be only numbers";
+      errors.name = "Full name cannot be only numbers";
     }
 
-    if (!formData.phone) {
+    if (!phone) {
       errors.phone = "Phone number cannot be empty";
-    } else if (!/^\d{10}$/.test(formData.phone)) {
+    } else if (!/^\d{10}$/.test(phone)) {
       errors.phone = "Enter a valid 10-digit phone number";
     }
 
-    if (!formData.email) {
+    if (!email) {
       errors.email = "Email cannot be empty";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       errors.email = "Enter a valid email address (e.g. name@example.com)";
     }
 
@@ -50,19 +55,40 @@ export default function RegisterOwner() {
       errors.password = "Password cannot be empty";
     } else if (formData.password.length < 8) {
       errors.password = "Password must be at least 8 characters";
+    } else if (!formData.password.trim()) {
+      errors.password = "Password cannot be only spaces";
     }
-    
+
+    if (!businessName) {
+      errors.businessName = "Business name cannot be empty";
+    } else if (businessName.length < 2) {
+      errors.businessName = "Business name must be at least 2 characters";
+    }
+
+    if (!businessAddress) {
+      errors.businessAddress = "Business address cannot be empty";
+    } else if (businessAddress.length < 5) {
+      errors.businessAddress = "Business address must be at least 5 characters";
+    }
+
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
     setError("");
+    if (!validate()) return;
     setIsLoading(true);
     try {
-      await registerOwner(formData);
+      await registerOwner({
+        ...formData,
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email.trim().toLowerCase(),
+        businessName: formData.businessName.trim(),
+        businessAddress: formData.businessAddress.trim(),
+      });
       showSuccess("Registration successful! Please sign in with your credentials.");
       navigate("/login");
     } catch (err) {
@@ -112,7 +138,7 @@ export default function RegisterOwner() {
           {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 text-sm border border-red-200">{error}</div>}
 
           {/* Form */}
-          <form className="space-y-5" onSubmit={handleSubmit}>
+          <form className="space-y-5" onSubmit={handleSubmit} noValidate>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Name Input */}
               <div className="space-y-2">
@@ -121,7 +147,7 @@ export default function RegisterOwner() {
                   <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">person</span>
                   <input 
                     className={`w-full h-[52px] pl-12 pr-4 bg-surface rounded-[16px] border ${fieldErrors.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-transparent focus:border-primary'} focus:bg-surface-container-lowest focus:ring-0 shadow-sm transition-all text-body-md placeholder:text-outline-variant outline-none`}
-                    name="name" placeholder="John Doe" type="text"
+                    name="name" value={formData.name} placeholder="John Doe" type="text"
                     onChange={handleChange}
                   />
                 </div>
@@ -135,7 +161,7 @@ export default function RegisterOwner() {
                   <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">call</span>
                   <input 
                     className={`w-full h-[52px] pl-12 pr-4 bg-surface rounded-[16px] border ${fieldErrors.phone ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-transparent focus:border-primary'} focus:bg-surface-container-lowest focus:ring-0 shadow-sm transition-all text-body-md placeholder:text-outline-variant outline-none`}
-                    name="phone" placeholder="9876543210" type="text"
+                    name="phone" value={formData.phone} placeholder="9876543210" type="text"
                     onChange={handleChange}
                   />
                 </div>
@@ -150,7 +176,7 @@ export default function RegisterOwner() {
                 <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">mail</span>
                 <input 
                   className={`w-full h-[52px] pl-12 pr-4 bg-surface rounded-[16px] border ${fieldErrors.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-transparent focus:border-primary'} focus:bg-surface-container-lowest focus:ring-0 shadow-sm transition-all text-body-md placeholder:text-outline-variant outline-none`}
-                  name="email" placeholder="name@company.com" type="text"
+                  name="email" value={formData.email} placeholder="name@company.com" type="email"
                   onChange={handleChange}
                 />
               </div>
@@ -164,7 +190,7 @@ export default function RegisterOwner() {
                 <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">lock</span>
                 <input 
                   className={`w-full h-[52px] pl-12 pr-12 bg-surface rounded-[16px] border ${fieldErrors.password ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-transparent focus:border-primary'} focus:bg-surface-container-lowest focus:ring-0 shadow-sm transition-all text-body-md placeholder:text-outline-variant outline-none`}
-                  name="password" placeholder="••••••••" type={showPassword ? "text" : "password"}
+                  name="password" value={formData.password} placeholder="••••••••" type={showPassword ? "text" : "password"}
                   onChange={handleChange}
                 />
                 <button 
@@ -184,11 +210,12 @@ export default function RegisterOwner() {
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">store</span>
                 <input 
-                  className="w-full h-[52px] pl-12 pr-4 bg-surface rounded-[16px] border border-transparent focus:bg-surface-container-lowest focus:border-primary focus:ring-0 shadow-sm transition-all text-body-md placeholder:text-outline-variant outline-none" 
-                  name="businessName" placeholder="Acme Logistics Ltd." required type="text"
+                  className={`w-full h-[52px] pl-12 pr-4 bg-surface rounded-[16px] border ${fieldErrors.businessName ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-transparent focus:border-primary'} focus:bg-surface-container-lowest focus:ring-0 shadow-sm transition-all text-body-md placeholder:text-outline-variant outline-none`}
+                  name="businessName" value={formData.businessName} placeholder="Acme Logistics Ltd." type="text"
                   onChange={handleChange}
                 />
               </div>
+              {fieldErrors.businessName && <p className="text-red-500 text-xs mt-1">{fieldErrors.businessName}</p>}
             </div>
 
             {/* Business Address Input */}
@@ -197,11 +224,12 @@ export default function RegisterOwner() {
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-4 top-6 -translate-y-1/2 text-outline">location_on</span>
                 <textarea 
-                  className="w-full min-h-[80px] pt-3 pb-3 pl-12 pr-4 bg-surface rounded-[16px] border border-transparent focus:bg-surface-container-lowest focus:border-primary focus:ring-0 shadow-sm transition-all text-body-md placeholder:text-outline-variant outline-none resize-none" 
-                  name="businessAddress" placeholder="123 Transport Way..." required
+                  className={`w-full min-h-[80px] pt-3 pb-3 pl-12 pr-4 bg-surface rounded-[16px] border ${fieldErrors.businessAddress ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-transparent focus:border-primary'} focus:bg-surface-container-lowest focus:ring-0 shadow-sm transition-all text-body-md placeholder:text-outline-variant outline-none resize-none`}
+                  name="businessAddress" value={formData.businessAddress} placeholder="123 Transport Way..."
                   onChange={handleChange}
                 ></textarea>
               </div>
+              {fieldErrors.businessAddress && <p className="text-red-500 text-xs mt-1">{fieldErrors.businessAddress}</p>}
             </div>
 
             {/* Submit Button */}

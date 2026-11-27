@@ -94,10 +94,44 @@ exports.generateTripPdf = async (trip, expenses, res) => {
       const match = String(cap).match(/[\d.]+/);
       return match ? `${match[0]} Tons` : "N/A";
     };
-    const primaryDriver = (trip.driverIds && trip.driverIds[0]) || trip.driverId;
-    const driverName = (trip.driverIds && trip.driverIds.length > 1)
-      ? trip.driverIds.map(d => d.userId?.name || d.licenseNumber).join(', ')
-      : (primaryDriver?.userId?.name || primaryDriver?.licenseNumber || "N/A");
+
+    const rawTrucks =
+      trip.truckIds && trip.truckIds.length > 0
+        ? trip.truckIds
+        : trip.truckId
+        ? [trip.truckId]
+        : [];
+    const rawDrivers =
+      trip.driverIds && trip.driverIds.length > 0
+        ? trip.driverIds
+        : trip.driverId
+        ? [trip.driverId]
+        : [];
+
+    const truckDriverPairs = rawTrucks.map((trk, idx) => {
+      const drv = rawDrivers[idx] || null;
+      const drvName = drv?.userId?.name || drv?.licenseNumber || "Unassigned";
+      const words = drvName.trim().split(/\s+/).filter(Boolean);
+      const initials =
+        words.length > 1
+          ? `${words[0][0]}${words[1][0]}`.toUpperCase()
+          : drvName.substring(0, 2).toUpperCase();
+      return {
+        index: idx + 1,
+        registrationNumber: trk?.registrationNumber || "N/A",
+        truckType: trk?.truckType || "N/A",
+        capacityStr: cleanCapacity(trk?.capacity),
+        driverName: drvName,
+        driverInitials: initials,
+        licenseNumber: drv?.licenseNumber || "N/A",
+        phone: drv?.userId?.phone || "N/A",
+      };
+    });
+
+    const primaryDriver = rawDrivers[0] || null;
+    const driverName = truckDriverPairs.length > 0
+      ? truckDriverPairs.map((p) => p.driverName).join(", ")
+      : "N/A";
 
     // Build Donut Gradient
     let donutGradient = "";
@@ -126,14 +160,28 @@ exports.generateTripPdf = async (trip, expenses, res) => {
     const barExpPct = maxBarVal > 0 ? (totalExpAmt / maxBarVal) * 100 : 0;
     const barProfPct = maxBarVal > 0 ? (Math.abs(netProfitAmt) / maxBarVal) * 100 : 0;
 
-    const expensesList = expenses.map(exp => ({
-      dateStr: formatExpenseDate(exp.date || exp.createdAt),
-      category: exp.category,
-      color: CATEGORY_COLORS[exp.category] || CATEGORY_COLORS["Other"],
-      description: exp.description,
-      hasDesc: !!exp.description,
-      amountStr: formatCurrency(exp.amount)
-    }));
+    const expensesList = expenses.map(exp => {
+      const truckReg = exp.truckId?.registrationNumber || rawTrucks[0]?.registrationNumber || "N/A";
+      const addedByName =
+        exp.addedByUserId?.name ||
+        (exp.addedBy === "DRIVER"
+          ? exp.driverId?.userId?.name || exp.driverId?.licenseNumber
+          : null) ||
+        exp.addedBy ||
+        "N/A";
+      const addedByRole = exp.addedBy === "OWNER" ? "Owner" : "Driver";
+
+      return {
+        dateStr: formatExpenseDate(exp.date || exp.createdAt),
+        category: exp.category,
+        color: CATEGORY_COLORS[exp.category] || CATEGORY_COLORS["Other"],
+        description: exp.description,
+        hasDesc: !!exp.description,
+        amountStr: formatCurrency(exp.amount),
+        truckReg,
+        addedByLabel: `${addedByName} (${addedByRole})`,
+      };
+    });
 
     const templateData = {
       generatedDate: formatDateTime(new Date()),
@@ -148,21 +196,23 @@ exports.generateTripPdf = async (trip, expenses, res) => {
       createdDate: formatDateTime(trip.createdAt),
       completedDate: trip.status === "ON_TRIP" || trip.status === "ACTIVE" || !trip.actualEndDate ? "In progress" : formatDateTime(trip.actualEndDate),
       durationStr,
+      truckDriverPairs,
+      truckCount: truckDriverPairs.length,
       truck: {
-        registrationNumber: (trip.truckIds && trip.truckIds.length > 0)
-          ? trip.truckIds.map(t => t.registrationNumber).join(', ')
-          : (trip.truckId?.registrationNumber || "N/A"),
-        truckType: (trip.truckIds && trip.truckIds[0]?.truckType) || trip.truckId?.truckType || "N/A",
-        capacityStr: (trip.truckIds && trip.truckIds.length > 0)
-          ? `${trip.truckIds.reduce((sum, t) => sum + (parseFloat(t.capacity) || 0), 0)} Tons`
-          : cleanCapacity(trip.truckId?.capacity)
+        registrationNumber: rawTrucks.length > 0
+          ? rawTrucks.map(t => t.registrationNumber).join(', ')
+          : "N/A",
+        truckType: rawTrucks[0]?.truckType || "N/A",
+        capacityStr: rawTrucks.length > 0
+          ? `${rawTrucks.reduce((sum, t) => sum + (parseFloat(t.capacity) || 0), 0)} Tons`
+          : "N/A"
       },
       driver: {
         initials: (primaryDriver?.userId?.name || driverName).substring(0, 2).toUpperCase(),
         name: driverName,
-        licenseNumber: (trip.driverIds && trip.driverIds.length > 0)
-          ? trip.driverIds.map(d => d.licenseNumber).join(', ')
-          : (trip.driverId?.licenseNumber || "N/A"),
+        licenseNumber: rawDrivers.length > 0
+          ? rawDrivers.map(d => d.licenseNumber).join(', ')
+          : "N/A",
         phone: primaryDriver?.userId?.phone || "N/A"
       },
       hasExpenses: totalExpAmt > 0,

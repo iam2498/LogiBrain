@@ -138,6 +138,20 @@ export default function DriverDashboard() {
   }
 
   const currentTrip = myTrips.length > 0 ? myTrips[0] : null;
+  const myDriverId = profile?.driverInfo?._id;
+  const myAssignment = currentTrip?.assignments?.find(
+    (a) => (a.driverId?._id || a.driverId)?.toString() === myDriverId?.toString()
+  );
+  const myTruckIndex = currentTrip?.driverIds?.findIndex(
+    (d) => (d?._id || d)?.toString() === myDriverId?.toString()
+  );
+  const myAssignedTruck =
+    (myTruckIndex !== undefined && myTruckIndex >= 0 && currentTrip?.truckIds?.[myTruckIndex]) ||
+    currentTrip?.truckId;
+  const isMyLegEnded =
+    currentTrip?.status === "DRIVER_ENDED" ||
+    myAssignment?.status === "END_REQUESTED" ||
+    myAssignment?.status === "COMPLETED";
 
   return (
     <div className="min-h-screen bg-background text-on-surface font-body-md flex flex-col antialiased">
@@ -220,9 +234,15 @@ export default function DriverDashboard() {
                 {/* Trip Header */}
                 <div className="flex flex-col mb-6 md:mb-8 pb-5 md:pb-6 border-b border-outline-variant/30">
                   <div className="flex justify-between items-start mb-4 md:hidden">
-                    <span className="bg-blue-50 text-blue-700 text-[11px] px-3 py-1 rounded-full uppercase font-bold tracking-wide border border-blue-200 shadow-sm flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                      {currentTrip.status}
+                    <span className={`text-[11px] px-3 py-1 rounded-full uppercase font-bold tracking-wide border shadow-sm flex items-center gap-1.5 ${
+                      isMyLegEnded
+                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                        : "bg-blue-50 text-blue-700 border-blue-200"
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                        isMyLegEnded ? "bg-amber-500" : "bg-blue-500"
+                      }`}></span>
+                      {isMyLegEnded ? "End Requested" : currentTrip.status}
                     </span>
                   </div>
 
@@ -246,9 +266,15 @@ export default function DriverDashboard() {
                     </div>
 
                     <div className="hidden md:block">
-                      <span className="bg-blue-50 text-blue-700 text-[13px] px-4 py-1.5 rounded-full uppercase font-bold tracking-wide border border-blue-200 shadow-sm flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                        {currentTrip.status}
+                      <span className={`text-[13px] px-4 py-1.5 rounded-full uppercase font-bold tracking-wide border shadow-sm flex items-center gap-2 ${
+                        isMyLegEnded
+                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                          : "bg-blue-50 text-blue-700 border-blue-200"
+                      }`}>
+                        <span className={`w-2 h-2 rounded-full animate-pulse ${
+                          isMyLegEnded ? "bg-amber-500" : "bg-blue-500"
+                        }`}></span>
+                        {isMyLegEnded ? "End Requested" : currentTrip.status}
                       </span>
                     </div>
                   </div>
@@ -258,13 +284,16 @@ export default function DriverDashboard() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8 bg-surface-container-low/50 md:bg-transparent p-4 md:p-0 rounded-xl md:rounded-none">
                   <div>
                     <p className="text-[11px] md:text-[12px] text-on-surface-variant font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[14px] md:text-[16px]">tag</span> Truck
+                      <span className="material-symbols-outlined text-[14px] md:text-[16px]">tag</span> My Truck
                     </p>
                     <p className="font-mono font-bold text-[13px] md:text-[15px] text-on-surface">
-                      {currentTrip.truckIds && currentTrip.truckIds.length > 0
-                        ? currentTrip.truckIds.map((t) => t.registrationNumber).join(", ")
-                        : currentTrip.truckId?.registrationNumber || "Unknown"}
+                      {myAssignedTruck?.registrationNumber || "Unknown"}
                     </p>
+                    {currentTrip.truckIds?.length > 1 && (
+                      <p className="text-[10px] text-secondary font-semibold mt-0.5">
+                        {currentTrip.truckIds.length}-truck trip
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-[11px] md:text-[12px] text-on-surface-variant font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
@@ -287,16 +316,25 @@ export default function DriverDashboard() {
                 </div>
                 
                 {/* Actions */}
-                <div className="flex flex-col sm:flex-row gap-3 md:gap-4 md:bg-surface-container-low md:p-4 rounded-xl md:border border-outline-variant/30">
-                  <button onClick={() => setIsExpenseModalOpen(true)} className="w-full sm:flex-1 bg-white text-on-surface px-5 py-3.5 md:py-3 rounded-[12px] md:rounded-lg font-bold text-[14px] md:text-[15px] hover:bg-surface-container-highest transition-all flex items-center justify-center gap-2 border border-outline-variant/50 shadow-sm touch-manipulation min-h-[48px]">
-                    <span className="material-symbols-outlined text-[20px] text-green-600">receipt_long</span>
-                    Add Expense
-                  </button>
-                  <button onClick={() => handleEndTrip(currentTrip._id)} className="w-full sm:flex-1 bg-[#0a0a0a] text-white px-5 py-3.5 md:py-3 rounded-[12px] md:rounded-lg font-bold text-[14px] md:text-[15px] hover:bg-black transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] touch-manipulation min-h-[48px]">
-                    <span className="material-symbols-outlined text-[20px] text-yellow-400">flag</span>
-                    Request Trip End
-                  </button>
-                </div>
+                {isMyLegEnded ? (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 flex items-center gap-3 text-[13px] md:text-[14px] font-medium">
+                    <span className="material-symbols-outlined text-amber-600 text-[22px]">hourglass_top</span>
+                    <span>
+                      Your trip end request has been sent. Waiting for {currentTrip.truckIds?.length > 1 ? "remaining driver(s) and " : ""}owner confirmation.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row gap-3 md:gap-4 md:bg-surface-container-low md:p-4 rounded-xl md:border border-outline-variant/30">
+                    <button onClick={() => setIsExpenseModalOpen(true)} className="w-full sm:flex-1 bg-white text-on-surface px-5 py-3.5 md:py-3 rounded-[12px] md:rounded-lg font-bold text-[14px] md:text-[15px] hover:bg-surface-container-highest transition-all flex items-center justify-center gap-2 border border-outline-variant/50 shadow-sm touch-manipulation min-h-[48px]">
+                      <span className="material-symbols-outlined text-[20px] text-green-600">receipt_long</span>
+                      Add Expense
+                    </button>
+                    <button onClick={() => handleEndTrip(currentTrip._id)} className="w-full sm:flex-1 bg-[#0a0a0a] text-white px-5 py-3.5 md:py-3 rounded-[12px] md:rounded-lg font-bold text-[14px] md:text-[15px] hover:bg-black transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] touch-manipulation min-h-[48px]">
+                      <span className="material-symbols-outlined text-[20px] text-yellow-400">flag</span>
+                      Request Trip End
+                    </button>
+                  </div>
+                )}
 
                 {/* Expenses List */}
                 {tripExpenses.length > 0 && (

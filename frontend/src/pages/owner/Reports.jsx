@@ -378,6 +378,7 @@ export default function Reports() {
                 >
                   <option value="">All Statuses</option>
                   <option value="ON_TRIP">On Trip</option>
+                  <option value="DRIVER_ENDED">End Requested</option>
                   <option value="COMPLETED">Completed</option>
                   <option value="CANCELLED">Cancelled</option>
                 </select>
@@ -613,10 +614,17 @@ export default function Reports() {
                           <tr key={trip._id} className="hover:bg-surface-container-lowest/50 transition-colors">
                             <td className="px-6 py-4">
                               <div className="font-bold text-on-surface">{trip.source} → {trip.destination}</div>
-                              <div className="text-on-surface-variant text-[11px]">
-                                Truck: {trip.truckIds && trip.truckIds.length > 0
-                                  ? trip.truckIds.map(tr => tr.registrationNumber).join(', ')
-                                  : trip.truckId?.registrationNumber || "Unknown"}
+                              <div className="flex flex-wrap gap-1.5 mt-1">
+                                {(trip.truckIds && trip.truckIds.length > 0 ? trip.truckIds : trip.truckId ? [trip.truckId] : []).map((tr, idx) => {
+                                  const dr = (trip.driverIds && trip.driverIds[idx]) || (idx === 0 ? trip.driverId : null);
+                                  const drName = dr?.userId?.name || dr?.licenseNumber;
+                                  return (
+                                    <span key={tr?._id || idx} className="inline-flex items-center gap-1 bg-surface-container-low px-2 py-0.5 rounded text-[11px] text-on-surface-variant border border-outline-variant/30">
+                                      <span className="font-mono font-bold text-on-surface">{tr?.registrationNumber || "Unknown"}</span>
+                                      {drName && <span>• {drName}</span>}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-on-surface-variant font-medium">
@@ -803,23 +811,24 @@ export default function Reports() {
                         <div className="text-[11px] text-on-surface font-mono bg-surface-container-low px-2 py-1 rounded truncate">{selectedTripDetails._id}</div>
                       </div>
                       
-                      <div className="pt-3 border-t border-outline-variant/30 grid grid-cols-2 gap-4">
-                         <div>
-                          <div className="text-[11px] font-bold text-on-surface-variant uppercase mb-1">Truck</div>
-                          <div className="text-[13px] font-medium text-on-surface">
-                            {selectedTripDetails.truckIds && selectedTripDetails.truckIds.length > 0
-                              ? selectedTripDetails.truckIds.map(tr => tr.registrationNumber).join(', ')
-                              : selectedTripDetails.truckId?.registrationNumber || 'N/A'}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-bold text-on-surface-variant uppercase mb-1">Driver</div>
-                          <div className="text-[13px] font-medium text-on-surface truncate">
-                            {selectedTripDetails.driverIds && selectedTripDetails.driverIds.length > 0
-                              ? selectedTripDetails.driverIds.map(dr => dr.userId?.name || dr.licenseNumber).join(', ')
-                              : selectedTripDetails.driverId?.userId?.name || selectedTripDetails.driverId?.licenseNumber || 'N/A'}
-                          </div>
-                        </div>
+                      <div className="pt-3 border-t border-outline-variant/30 space-y-2">
+                        <div className="text-[11px] font-bold text-on-surface-variant uppercase">Assigned Fleet &amp; Crew</div>
+                        {(selectedTripDetails.truckIds && selectedTripDetails.truckIds.length > 0
+                          ? selectedTripDetails.truckIds
+                          : selectedTripDetails.truckId
+                          ? [selectedTripDetails.truckId]
+                          : []
+                        ).map((tr, idx) => {
+                          const dr =
+                            (selectedTripDetails.driverIds && selectedTripDetails.driverIds[idx]) ||
+                            (idx === 0 ? selectedTripDetails.driverId : null);
+                          return (
+                            <div key={tr?._id || idx} className="flex justify-between items-center bg-surface-container-low px-2.5 py-1.5 rounded-lg text-[12px]">
+                              <span className="font-mono font-bold text-on-surface">{tr?.registrationNumber || 'N/A'}</span>
+                              <span className="text-on-surface-variant font-medium truncate ml-2">{dr?.userId?.name || dr?.licenseNumber || 'N/A'}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                     

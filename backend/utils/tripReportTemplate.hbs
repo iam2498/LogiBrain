@@ -188,7 +188,7 @@
 <body>
 
   <div class="header">
-    <h1>FleetFlow</h1>
+    <h1>LogiBrain</h1>
     <div class="subtitle">Owner Portal &bull; Trip Report</div>
     <div class="date">Generated: {{generatedDate}}</div>
     
@@ -232,19 +232,30 @@
       <div class="info-row"><div class="info-label">Duration</div><div class="info-value">{{durationStr}}</div></div>
     </div>
     <div class="info-card">
-      <h3>Truck Details</h3>
-      <div class="info-row"><div class="info-label">Registration</div><div class="info-value"><span class="plate">{{truck.registrationNumber}}</span></div></div>
-      <div class="info-row"><div class="info-label">Type</div><div class="info-value">{{truck.truckType}}</div></div>
-      <div class="info-row"><div class="info-label">Capacity</div><div class="info-value">{{truck.capacityStr}}</div></div>
+      <h3>Fleet Summary ({{truckCount}} {{#if truckCount}}Assigned{{/if}})</h3>
+      <div class="info-row"><div class="info-label">Trucks</div><div class="info-value"><span class="plate">{{truck.registrationNumber}}</span></div></div>
+      <div class="info-row"><div class="info-label">Total Capacity</div><div class="info-value">{{truck.capacityStr}}</div></div>
+      <div class="info-row"><div class="info-label">Drivers</div><div class="info-value">{{driver.name}}</div></div>
     </div>
   </div>
 
-  <div class="driver-card">
-    <div class="avatar">{{driver.initials}}</div>
-    <div class="driver-info">
-      <h3>{{driver.name}}</h3>
-      <p>Lic: {{driver.licenseNumber}} &bull; Ph: {{driver.phone}}</p>
-    </div>
+  <div style="margin-bottom: 24px;">
+    <h2 class="section-title" style="margin-bottom: 12px;">Assigned Trucks &amp; Drivers</h2>
+    {{#each truckDriverPairs}}
+      <div class="driver-card" style="margin-bottom: 10px; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <div class="avatar">{{this.driverInitials}}</div>
+          <div class="driver-info">
+            <h3>#{{this.index}} {{this.driverName}}</h3>
+            <p>Lic: {{this.licenseNumber}} &bull; Ph: {{this.phone}}</p>
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <div><span class="plate" style="font-weight: bold; font-size: 12px;">{{this.registrationNumber}}</span></div>
+          <p style="margin: 6px 0 0 0; font-size: 11px; color: var(--text-muted);">{{this.capacityStr}} &bull; {{this.truckType}}</p>
+        </div>
+      </div>
+    {{/each}}
   </div>
 
   <div class="finance-section">
@@ -297,6 +308,8 @@
       <thead>
         <tr>
           <th>DATE</th>
+          <th>TRUCK</th>
+          <th>ADDED BY</th>
           <th>CATEGORY</th>
           <th>DESCRIPTION</th>
           <th class="text-right">AMOUNT</th>
@@ -306,6 +319,8 @@
         {{#each expensesList}}
           <tr>
             <td>{{this.dateStr}}</td>
+            <td><span class="plate">{{this.truckReg}}</span></td>
+            <td>{{this.addedByLabel}}</td>
             <td><span class="cat-pill" style="background: {{this.color}}">{{this.category}}</span></td>
             <td>
               {{#if this.hasDesc}}
@@ -319,12 +334,12 @@
         {{/each}}
         {{#if hasExpenses}}
           <tr class="table-total">
-            <td colspan="3" class="text-right">TOTAL EXPENSES</td>
+            <td colspan="5" class="text-right">TOTAL EXPENSES</td>
             <td class="text-right" style="color: var(--danger)">{{totalExpenses}}</td>
           </tr>
         {{else}}
           <tr>
-            <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 48px;">No itemized expenses found.</td>
+            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 48px;">No itemized expenses found.</td>
           </tr>
         {{/if}}
       </tbody>

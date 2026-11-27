@@ -9,13 +9,30 @@ exports.getDashboardKPIs = async (req, res, next) => {
   try {
     const ownerId = req.user._id;
 
-    const totalTrucks = await Truck.countDocuments({ ownerId });
-    const totalDrivers = await Driver.countDocuments({ ownerId });
-    const activeTrips = await Trip.countDocuments({ ownerId, status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] } });
+    const [totalTrucks, totalDrivers, trips] = await Promise.all([
+      Truck.countDocuments({ ownerId }),
+      Driver.countDocuments({ ownerId }),
+      Trip.find({ ownerId }).select("_id status expectedRevenue actualRevenue").lean(),
+    ]);
 
-    const reports = await TripReport.find({ ownerId });
-    const totalRevenue = reports.reduce((sum, report) => sum + (report.grossRevenue || 0), 0);
-    const totalExpenses = reports.reduce((sum, report) => sum + (report.totalExpenses || 0), 0);
+    const activeTrips = trips.filter((t) =>
+      ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"].includes(t.status)
+    ).length;
+
+    const existingTripIds = trips.map((t) => t._id);
+    const completedTrips = trips.filter((t) => t.status === "COMPLETED");
+
+    const expenses = existingTripIds.length
+      ? await Expense.find({ ownerId, tripId: { $in: existingTripIds } })
+          .select("amount")
+          .lean()
+      : [];
+
+    const totalRevenue = completedTrips.reduce(
+      (sum, t) => sum + (t.actualRevenue ?? t.expectedRevenue ?? 0),
+      0
+    );
+    const totalExpenses = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
     const netProfit = totalRevenue - totalExpenses;
 
     res.json({
@@ -105,46 +122,69 @@ exports.getDriverReport = async (req, res, next) => {
 
 exports.getOverallReport = async (req, res, next) => {
   try {
-    const query = { ownerId: req.user._id };
-    
+    const ownerId = req.user._id;
+    const trips = await Trip.find({ ownerId })
+      .select("_id status expectedRevenue actualRevenue actualEndDate startDate")
+      .lean();
+    const existingTripIds = trips.map((t) => t._id);
+
+    const reportQuery = { ownerId, tripId: { $in: existingTripIds } };
+    const expenseQuery = { ownerId, tripId: { $in: existingTripIds } };
+
     if (req.query.startDate && req.query.endDate) {
-      query.generatedAt = {
+      const dateRange = {
         $gte: new Date(req.query.startDate),
-        $lte: new Date(req.query.endDate)
+        $lte: new Date(req.query.endDate),
       };
+      reportQuery.generatedAt = dateRange;
+      expenseQuery.date = dateRange;
     }
 
-    const reports = await TripReport.find(query);
-    
-    const totalRevenue = reports.reduce((sum, r) => sum + (r.grossRevenue || 0), 0);
-    const totalExpenses = reports.reduce((sum, r) => sum + (r.totalExpenses || 0), 0);
-    
-    // Calculate aggregate expense breakdown
-    const breakdownMap = {};
-    reports.forEach(r => {
-      r.expenseBreakdown.forEach(exp => {
-        if (breakdownMap[exp.category]) {
-          breakdownMap[exp.category] += exp.amount;
-        } else {
-          breakdownMap[exp.category] = exp.amount;
-        }
-      });
+    const [reports, expenses] = await Promise.all([
+      existingTripIds.length ? TripReport.find(reportQuery) : [],
+      existingTripIds.length ? Expense.find(expenseQuery).select("category amount").lean() : [],
+    ]);
+
+    const completedTrips = trips.filter((t) => {
+      if (t.status !== "COMPLETED") return false;
+      if (req.query.startDate && req.query.endDate) {
+        const refDate = new Date(t.actualEndDate || t.startDate);
+        return (
+          refDate >= new Date(req.query.startDate) &&
+          refDate <= new Date(req.query.endDate)
+        );
+      }
+      return true;
     });
 
-    const expenseBreakdown = Object.keys(breakdownMap).map(category => ({
+    const totalRevenue =
+      reports.length > 0 && !(req.query.startDate && req.query.endDate)
+        ? completedTrips.reduce((sum, t) => sum + (t.actualRevenue ?? t.expectedRevenue ?? 0), 0)
+        : reports.reduce((sum, r) => sum + (r.grossRevenue || 0), 0);
+    let totalExpenses = 0;
+
+    // Aggregate expenses directly from Expense collection so active trip expenses appear immediately
+    const breakdownMap = {};
+    expenses.forEach((exp) => {
+      const amt = exp.amount || 0;
+      totalExpenses += amt;
+      breakdownMap[exp.category] = (breakdownMap[exp.category] || 0) + amt;
+    });
+
+    const expenseBreakdown = Object.keys(breakdownMap).map((category) => ({
       category,
-      amount: breakdownMap[category]
+      amount: breakdownMap[category],
     }));
 
     res.json({
       success: true,
       data: {
-        totalTrips: reports.length,
+        totalTrips: completedTrips.length,
         totalRevenue,
         totalExpenses,
         netProfit: totalRevenue - totalExpenses,
         expenseBreakdown,
-      }
+      },
     });
   } catch (error) {
     next(error);
@@ -203,8 +243,10 @@ exports.getAnalytics = async (req, res, next) => {
     const breakdownMap = {};
 
     trips.forEach(trip => {
-      // Use actualRevenue if available, fallback to expectedRevenue
-      totalRevenue += (trip.actualRevenue || trip.expectedRevenue || 0);
+      // Only count realized revenue from completed trips (exclude cancelled & in-progress trips)
+      if (trip.status === "COMPLETED") {
+        totalRevenue += (trip.actualRevenue ?? trip.expectedRevenue ?? 0);
+      }
     });
 
     expenses.forEach(exp => {
@@ -228,7 +270,7 @@ exports.getAnalytics = async (req, res, next) => {
     // Only from the filtered dataset, and only those that are completed
     const completedTrips = trips
       .filter(t => t.status === "COMPLETED")
-      .sort((a, b) => new Date(b.actualEndDate || b.endDate) - new Date(a.actualEndDate || a.endDate))
+      .sort((a, b) => new Date(b.actualEndDate || b.expectedEndDate || b.startDate) - new Date(a.actualEndDate || a.expectedEndDate || a.startDate))
       .slice(0, 5);
 
     res.json({
@@ -271,8 +313,16 @@ exports.getTripReportPdf = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Trip not found" });
     }
 
-    // Fetch related expenses
-    const expenses = await Expense.find({ tripId: trip._id });
+    // Fetch related expenses with truck, driver, and addedBy user details
+    const expenses = await Expense.find({ tripId: trip._id })
+      .populate("truckId", "registrationNumber truckType")
+      .populate({
+        path: "driverId",
+        select: "licenseNumber userId",
+        populate: { path: "userId", select: "name" },
+      })
+      .populate("addedByUserId", "name role")
+      .sort({ date: -1 });
     
     // Delegate to builder
     generateTripPdf(trip, expenses, res);

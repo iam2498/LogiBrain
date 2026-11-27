@@ -1,9 +1,148 @@
-const mongoose = require("mongoose");
 const Trip = require("../models/Trip");
 const Truck = require("../models/Truck");
 const Driver = require("../models/Driver");
+const Expense = require("../models/Expense");
+const TripReport = require("../models/TripReport");
 const { createTripSchema, updateTripSchema } = require("../validators/tripValidator");
 const { generateTripReport } = require("../services/tripReportService");
+const { AppError, withTransaction, sessionOptions } = require("../utils/withTransaction");
+
+function withSession(query, session) {
+  return session ? query.session(session) : query;
+}
+
+function populateTripQuery(query) {
+  return query
+    .populate("truckIds", "registrationNumber capacity truckType")
+    .populate({
+      path: "driverIds",
+      select: "licenseNumber userId",
+      populate: { path: "userId", select: "name phone" },
+    })
+    .populate("truckId", "registrationNumber capacity truckType")
+    .populate({
+      path: "driverId",
+      select: "licenseNumber userId",
+      populate: { path: "userId", select: "name phone" },
+    });
+}
+
+function validateTripCapacity(trucks, quantity) {
+  if (quantity === undefined || quantity === null || quantity === "") return;
+  const tripQuantity = parseFloat(quantity);
+  if (isNaN(tripQuantity)) {
+    throw new AppError("Invalid trip quantity format", 400);
+  }
+
+  let totalCapacity = 0;
+  let hasCapacity = false;
+  for (const truck of trucks) {
+    if (truck.capacity) {
+      const cap = parseFloat(truck.capacity);
+      if (!isNaN(cap)) {
+        totalCapacity += cap;
+        hasCapacity = true;
+      }
+    }
+  }
+
+  if (hasCapacity && tripQuantity > totalCapacity) {
+    throw new AppError(
+      `Quantity (${tripQuantity}) cannot exceed the combined truck capacity of ${totalCapacity}`,
+      400
+    );
+  }
+}
+
+async function snapshotResources(truckIds, driverIds, session) {
+  const cleanTruckIds = (truckIds || []).filter(Boolean);
+  const cleanDriverIds = (driverIds || []).filter(Boolean);
+  const [trucks, drivers] = await Promise.all([
+    cleanTruckIds.length
+      ? withSession(Truck.find({ _id: { $in: cleanTruckIds } }).select("status currentDriverId"), session)
+      : [],
+    cleanDriverIds.length
+      ? withSession(Driver.find({ _id: { $in: cleanDriverIds } }).select("status"), session)
+      : [],
+  ]);
+
+  return {
+    trucks: trucks.map((t) => ({ _id: t._id, status: t.status, currentDriverId: t.currentDriverId })),
+    drivers: drivers.map((d) => ({ _id: d._id, status: d.status })),
+  };
+}
+
+async function restoreResources(snapshots) {
+  if (!snapshots) return;
+  await Promise.all([
+    ...snapshots.trucks.map((t) =>
+      Truck.findByIdAndUpdate(t._id, {
+        status: t.status,
+        currentDriverId: t.currentDriverId,
+      }).catch(() => {})
+    ),
+    ...snapshots.drivers.map((d) =>
+      Driver.findByIdAndUpdate(d._id, { status: d.status }).catch(() => {})
+    ),
+  ]);
+}
+
+function ensureTripAssignments(trip) {
+  if (Array.isArray(trip.assignments) && trip.assignments.length > 0) {
+    return trip.assignments;
+  }
+  const truckIds =
+    trip.truckIds && trip.truckIds.length > 0
+      ? trip.truckIds
+      : trip.truckId
+      ? [trip.truckId]
+      : [];
+  const driverIds =
+    trip.driverIds && trip.driverIds.length > 0
+      ? trip.driverIds
+      : trip.driverId
+      ? [trip.driverId]
+      : [];
+  const fallbackStatus =
+    trip.status === "COMPLETED"
+      ? "COMPLETED"
+      : trip.status === "DRIVER_ENDED"
+      ? "END_REQUESTED"
+      : "ON_TRIP";
+
+  return truckIds.map((tId, idx) => ({
+    truckId: tId?._id || tId,
+    driverId: driverIds[idx]?._id || driverIds[idx],
+    status: fallbackStatus,
+  }));
+}
+
+function activeResourceMatchQuery(truckIds, driverIds) {
+  const orConditions = [];
+  if (truckIds?.length) {
+    orConditions.push(
+      { assignments: { $elemMatch: { truckId: { $in: truckIds }, status: { $ne: "COMPLETED" } } } },
+      {
+        $and: [
+          { $or: [{ assignments: { $exists: false } }, { assignments: { $size: 0 } }] },
+          { $or: [{ truckIds: { $in: truckIds } }, { truckId: { $in: truckIds } }] },
+        ],
+      }
+    );
+  }
+  if (driverIds?.length) {
+    orConditions.push(
+      { assignments: { $elemMatch: { driverId: { $in: driverIds }, status: { $ne: "COMPLETED" } } } },
+      {
+        $and: [
+          { $or: [{ assignments: { $exists: false } }, { assignments: { $size: 0 } }] },
+          { $or: [{ driverIds: { $in: driverIds } }, { driverId: { $in: driverIds } }] },
+        ],
+      }
+    );
+  }
+  return orConditions;
+}
 
 // Helper to normalize populated trip objects
 function normalizeTrip(tripDoc) {
@@ -25,6 +164,8 @@ function normalizeTrip(tripDoc) {
   if (!t.driverId && t.driverIds.length > 0) {
     t.driverId = t.driverIds[0];
   }
+
+  t.assignments = ensureTripAssignments(t);
 
   return t;
 }
@@ -48,7 +189,6 @@ exports.createTrip = async (req, res, next) => {
       });
     }
 
-    // Check for duplicate truck or driver IDs in request
     const uniqueTruckIds = new Set(truckIds.map((id) => id.toString()));
     if (uniqueTruckIds.size !== truckIds.length) {
       return res.status(400).json({
@@ -65,137 +205,121 @@ exports.createTrip = async (req, res, next) => {
       });
     }
 
-    // Validate trucks ownership
-    const trucks = await Truck.find({ _id: { $in: truckIds }, ownerId: req.user._id });
-    if (trucks.length !== truckIds.length) {
-      return res.status(400).json({
-        success: false,
-        message: "One or more trucks not found or do not belong to you",
-      });
-    }
+    const { result: createdTrip } = await withTransaction(async (session) => {
+      const opts = sessionOptions(session);
 
-    // Validate truck availability
-    const unavailableTruck = trucks.find(
-      (truck) => truck.status !== "AVAILABLE" && truck.status !== "ACTIVE"
-    );
-    if (unavailableTruck) {
-      return res.status(400).json({
-        success: false,
-        message: `Truck ${unavailableTruck.registrationNumber} is not available (Status: ${unavailableTruck.status})`,
-      });
-    }
+      const trucks = await withSession(
+        Truck.find({ _id: { $in: truckIds }, ownerId: req.user._id }),
+        session
+      );
+      if (trucks.length !== truckIds.length) {
+        throw new AppError("One or more trucks not found or do not belong to you", 400);
+      }
 
-    // Validate drivers ownership
-    const drivers = await Driver.find({ _id: { $in: driverIds }, ownerId: req.user._id }).populate(
-      "userId",
-      "name"
-    );
-    if (drivers.length !== driverIds.length) {
-      return res.status(400).json({
-        success: false,
-        message: "One or more drivers not found or do not belong to you",
-      });
-    }
+      const unavailableTruck = trucks.find(
+        (truck) => truck.status !== "AVAILABLE" && truck.status !== "ACTIVE"
+      );
+      if (unavailableTruck) {
+        throw new AppError(
+          `Truck ${unavailableTruck.registrationNumber} is not available (Status: ${unavailableTruck.status})`,
+          400
+        );
+      }
 
-    // Validate driver availability
-    const unavailableDriver = drivers.find(
-      (driver) => driver.status !== "AVAILABLE" && driver.status !== "ACTIVE"
-    );
-    if (unavailableDriver) {
-      const driverName = unavailableDriver.userId?.name || unavailableDriver.licenseNumber;
-      return res.status(400).json({
-        success: false,
-        message: `Driver ${driverName} is not available (Status: ${unavailableDriver.status})`,
-      });
-    }
+      const drivers = await withSession(
+        Driver.find({ _id: { $in: driverIds }, ownerId: req.user._id }).populate("userId", "name"),
+        session
+      );
+      if (drivers.length !== driverIds.length) {
+        throw new AppError("One or more drivers not found or do not belong to you", 400);
+      }
 
-    // Prevent assigning trucks or drivers that are already assigned to another active trip
-    const activeTrip = await Trip.findOne({
-      $or: [
-        { truckIds: { $in: truckIds } },
-        { driverIds: { $in: driverIds } },
-        { truckId: { $in: truckIds } },
-        { driverId: { $in: driverIds } },
-      ],
-      status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
-    });
-    if (activeTrip) {
-      return res.status(400).json({
-        success: false,
-        message: "One or more selected trucks or drivers are already assigned to an active trip",
-      });
-    }
+      const unavailableDriver = drivers.find(
+        (driver) => driver.status !== "AVAILABLE" && driver.status !== "ACTIVE"
+      );
+      if (unavailableDriver) {
+        const driverName = unavailableDriver.userId?.name || unavailableDriver.licenseNumber;
+        throw new AppError(
+          `Driver ${driverName} is not available (Status: ${unavailableDriver.status})`,
+          400
+        );
+      }
 
-    // Validate combined truck capacity against trip quantity
-    if (parsedData.quantity) {
-      const tripQuantity = parseFloat(parsedData.quantity);
-      let totalCapacity = 0;
-      let hasCapacity = false;
+      const activeTrip = await withSession(
+        Trip.findOne({
+          $or: activeResourceMatchQuery(truckIds, driverIds),
+          status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
+        }),
+        session
+      );
+      if (activeTrip) {
+        throw new AppError(
+          "One or more selected trucks or drivers are already assigned to an active trip",
+          400
+        );
+      }
 
-      for (const truck of trucks) {
-        if (truck.capacity) {
-          const cap = parseFloat(truck.capacity);
-          if (!isNaN(cap)) {
-            totalCapacity += cap;
-            hasCapacity = true;
+      validateTripCapacity(trucks, parsedData.quantity);
+
+      const snapshots = !session
+        ? {
+            trucks: trucks.map((t) => ({
+              _id: t._id,
+              status: t.status,
+              currentDriverId: t.currentDriverId,
+            })),
+            drivers: drivers.map((d) => ({ _id: d._id, status: d.status })),
           }
+        : null;
+
+      let trip = null;
+      try {
+        trip = new Trip({
+          ...parsedData,
+          truckIds,
+          driverIds,
+          truckId: truckIds[0],
+          driverId: driverIds[0],
+          assignments: truckIds.map((truckId, index) => ({
+            truckId,
+            driverId: driverIds[index],
+            status: "ON_TRIP",
+          })),
+          ownerId: req.user._id,
+          status: "ON_TRIP",
+        });
+        await trip.save(opts);
+
+        await Promise.all(
+          truckIds.map((truckId, index) =>
+            Truck.findByIdAndUpdate(
+              truckId,
+              {
+                status: "ON_TRIP",
+                currentDriverId: driverIds[index],
+              },
+              opts
+            )
+          )
+        );
+
+        await Driver.updateMany(
+          { _id: { $in: driverIds } },
+          { $set: { status: "ON_TRIP" } },
+          opts
+        );
+
+        return trip;
+      } catch (err) {
+        if (!session) {
+          if (trip?._id) await Trip.findByIdAndDelete(trip._id).catch(() => {});
+          await restoreResources(snapshots);
         }
+        throw err;
       }
-
-      if (isNaN(tripQuantity)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid trip quantity format",
-        });
-      }
-
-      if (hasCapacity && tripQuantity > totalCapacity) {
-        return res.status(400).json({
-          success: false,
-          message: `Quantity (${tripQuantity}) cannot exceed the combined truck capacity of ${totalCapacity}`,
-        });
-      }
-    }
-
-    // Create Trip document
-    const trip = await Trip.create({
-      ...parsedData,
-      truckIds,
-      driverIds,
-      truckId: truckIds[0],
-      driverId: driverIds[0],
-      ownerId: req.user._id,
-      status: "ON_TRIP",
     });
 
-    // Update trucks: set status to ON_TRIP and pair with corresponding driver
-    await Promise.all(
-      truckIds.map((truckId, index) =>
-        Truck.findByIdAndUpdate(truckId, {
-          status: "ON_TRIP",
-          currentDriverId: driverIds[index],
-        })
-      )
-    );
-
-    // Update drivers: set status to ON_TRIP
-    await Driver.updateMany({ _id: { $in: driverIds } }, { $set: { status: "ON_TRIP" } });
-
-    // Fetch populated trip to return
-    const populatedTrip = await Trip.findById(trip._id)
-      .populate("truckIds", "registrationNumber capacity truckType")
-      .populate({
-        path: "driverIds",
-        select: "licenseNumber userId",
-        populate: { path: "userId", select: "name phone" },
-      })
-      .populate("truckId", "registrationNumber capacity truckType")
-      .populate({
-        path: "driverId",
-        select: "licenseNumber userId",
-        populate: { path: "userId", select: "name phone" },
-      });
-
+    const populatedTrip = await populateTripQuery(Trip.findById(createdTrip._id));
     res.status(201).json({ success: true, data: normalizeTrip(populatedTrip) });
   } catch (error) {
     next(error);
@@ -205,10 +329,27 @@ exports.createTrip = async (req, res, next) => {
 exports.updateTrip = async (req, res, next) => {
   try {
     const parsedData = updateTripSchema.parse(req.body);
-    const trip = await Trip.findOne({ _id: req.params.id, ownerId: req.user._id });
-    if (!trip) return res.status(404).json({ success: false, message: "Trip not found" });
+    const { status: requestedStatus, ...updateFields } = parsedData;
 
-    if (trip.status === "ON_TRIP" || trip.status === "ACTIVE") {
+    const { result: updatedTrip } = await withTransaction(async (session) => {
+      const opts = sessionOptions(session);
+      const trip = await withSession(
+        Trip.findOne({ _id: req.params.id, ownerId: req.user._id }),
+        session
+      );
+      if (!trip) throw new AppError("Trip not found", 404);
+
+      if (trip.status === "COMPLETED" || trip.status === "CANCELLED") {
+        throw new AppError(`Cannot edit a ${trip.status.toLowerCase()} trip`, 400);
+      }
+
+      if (requestedStatus !== undefined && requestedStatus !== trip.status) {
+        throw new AppError(
+          "Trip status cannot be changed directly; use trip completion or cancellation actions",
+          400
+        );
+      }
+
       const oldTruckIds =
         trip.truckIds && trip.truckIds.length > 0
           ? trip.truckIds.map((id) => id.toString())
@@ -222,8 +363,8 @@ exports.updateTrip = async (req, res, next) => {
           ? [trip.driverId.toString()]
           : [];
 
-      const newTruckIds = parsedData.truckIds || oldTruckIds;
-      const newDriverIds = parsedData.driverIds || oldDriverIds;
+      const newTruckIds = updateFields.truckIds || oldTruckIds;
+      const newDriverIds = updateFields.driverIds || oldDriverIds;
 
       const trucksChanged =
         newTruckIds.length !== oldTruckIds.length ||
@@ -232,162 +373,162 @@ exports.updateTrip = async (req, res, next) => {
         newDriverIds.length !== oldDriverIds.length ||
         newDriverIds.some((id, idx) => id !== oldDriverIds[idx]);
 
+      let trucks = null;
       if (trucksChanged || driversChanged) {
         if (newTruckIds.length !== newDriverIds.length) {
-          return res.status(400).json({
-            success: false,
-            message: "Number of trucks and drivers should be equal",
-          });
+          throw new AppError("Number of trucks and drivers should be equal", 400);
         }
 
-        // Validate uniqueness within new lists
         if (new Set(newTruckIds).size !== newTruckIds.length) {
-          return res.status(400).json({
-            success: false,
-            message: "Duplicate trucks cannot be assigned to the same trip",
-          });
+          throw new AppError("Duplicate trucks cannot be assigned to the same trip", 400);
         }
         if (new Set(newDriverIds).size !== newDriverIds.length) {
-          return res.status(400).json({
-            success: false,
-            message: "Duplicate drivers cannot be assigned to the same trip",
-          });
+          throw new AppError("Duplicate drivers cannot be assigned to the same trip", 400);
         }
 
-        // Check ownership of new trucks
-        const trucks = await Truck.find({ _id: { $in: newTruckIds }, ownerId: req.user._id });
+        trucks = await withSession(
+          Truck.find({ _id: { $in: newTruckIds }, ownerId: req.user._id }),
+          session
+        );
         if (trucks.length !== newTruckIds.length) {
-          return res.status(400).json({
-            success: false,
-            message: "One or more trucks not found or do not belong to you",
-          });
+          throw new AppError("One or more trucks not found or do not belong to you", 400);
         }
 
-        // Check availability of newly added trucks
         const newlyAddedTruckIds = newTruckIds.filter((id) => !oldTruckIds.includes(id));
         for (const tId of newlyAddedTruckIds) {
           const t = trucks.find((trk) => trk._id.toString() === tId);
           if (t && t.status !== "AVAILABLE" && t.status !== "ACTIVE") {
-            return res.status(400).json({
-              success: false,
-              message: `New truck ${t.registrationNumber} is not available`,
-            });
+            throw new AppError(`New truck ${t.registrationNumber} is not available`, 400);
           }
-          const activeCheck = await Trip.findOne({
-            _id: { $ne: trip._id },
-            $or: [{ truckIds: tId }, { truckId: tId }],
-            status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
-          });
+          const activeCheck = await withSession(
+            Trip.findOne({
+              _id: { $ne: trip._id },
+              $or: [{ truckIds: tId }, { truckId: tId }],
+              status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
+            }),
+            session
+          );
           if (activeCheck) {
-            return res.status(400).json({
-              success: false,
-              message: `Truck ${t.registrationNumber} is already on another active trip`,
-            });
+            throw new AppError(`Truck ${t.registrationNumber} is already on another active trip`, 400);
           }
         }
 
-        // Check ownership of new drivers
-        const drivers = await Driver.find({ _id: { $in: newDriverIds }, ownerId: req.user._id }).populate(
-          "userId",
-          "name"
+        const drivers = await withSession(
+          Driver.find({ _id: { $in: newDriverIds }, ownerId: req.user._id }).populate("userId", "name"),
+          session
         );
         if (drivers.length !== newDriverIds.length) {
-          return res.status(400).json({
-            success: false,
-            message: "One or more drivers not found or do not belong to you",
-          });
+          throw new AppError("One or more drivers not found or do not belong to you", 400);
         }
 
-        // Check availability of newly added drivers
         const newlyAddedDriverIds = newDriverIds.filter((id) => !oldDriverIds.includes(id));
         for (const dId of newlyAddedDriverIds) {
           const d = drivers.find((drv) => drv._id.toString() === dId);
           if (d && d.status !== "AVAILABLE" && d.status !== "ACTIVE") {
             const dName = d.userId?.name || d.licenseNumber;
-            return res.status(400).json({
-              success: false,
-              message: `New driver ${dName} is not available`,
-            });
+            throw new AppError(`New driver ${dName} is not available`, 400);
           }
-          const activeCheck = await Trip.findOne({
-            _id: { $ne: trip._id },
-            $or: [{ driverIds: dId }, { driverId: dId }],
-            status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
-          });
+          const activeCheck = await withSession(
+            Trip.findOne({
+              _id: { $ne: trip._id },
+              $or: [{ driverIds: dId }, { driverId: dId }],
+              status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
+            }),
+            session
+          );
           if (activeCheck) {
             const dName = d ? d.userId?.name || d.licenseNumber : "Driver";
-            return res.status(400).json({
-              success: false,
-              message: `Driver ${dName} is already on another active trip`,
-            });
+            throw new AppError(`Driver ${dName} is already on another active trip`, 400);
           }
         }
-
-        // Validate combined capacity
-        const checkQuantity = parsedData.quantity !== undefined ? parsedData.quantity : trip.quantity;
-        if (checkQuantity) {
-          const tripQuantity = parseFloat(checkQuantity);
-          let totalCapacity = 0;
-          let hasCapacity = false;
-          for (const truck of trucks) {
-            if (truck.capacity) {
-              const cap = parseFloat(truck.capacity);
-              if (!isNaN(cap)) {
-                totalCapacity += cap;
-                hasCapacity = true;
-              }
-            }
-          }
-          if (!isNaN(tripQuantity) && hasCapacity && tripQuantity > totalCapacity) {
-            return res.status(400).json({
-              success: false,
-              message: `Quantity (${tripQuantity}) cannot exceed combined truck capacity of ${totalCapacity}`,
-            });
-          }
-        }
-
-        // Revert removed trucks and drivers
-        const removedTruckIds = oldTruckIds.filter((id) => !newTruckIds.includes(id));
-        const removedDriverIds = oldDriverIds.filter((id) => !newDriverIds.includes(id));
-        if (removedTruckIds.length > 0 || removedDriverIds.length > 0) {
-          await revertTruckAndDriverStatus(removedTruckIds, removedDriverIds);
-        }
-
-        // Update assigned trucks & drivers
-        await Promise.all(
-          newTruckIds.map((truckId, index) =>
-            Truck.findByIdAndUpdate(truckId, {
-              status: "ON_TRIP",
-              currentDriverId: newDriverIds[index],
-            })
-          )
-        );
-        await Driver.updateMany({ _id: { $in: newDriverIds } }, { $set: { status: "ON_TRIP" } });
-
-        trip.truckIds = newTruckIds;
-        trip.driverIds = newDriverIds;
-        trip.truckId = newTruckIds[0];
-        trip.driverId = newDriverIds[0];
       }
-    }
 
-    Object.assign(trip, parsedData);
-    await trip.save();
+      if (updateFields.quantity !== undefined || trucksChanged) {
+        if (!trucks) {
+          trucks = await withSession(
+            Truck.find({ _id: { $in: newTruckIds }, ownerId: req.user._id }),
+            session
+          );
+        }
+        const checkQuantity =
+          updateFields.quantity !== undefined ? updateFields.quantity : trip.quantity;
+        validateTripCapacity(trucks, checkQuantity);
+      }
 
-    const populatedTrip = await Trip.findById(trip._id)
-      .populate("truckIds", "registrationNumber capacity truckType")
-      .populate({
-        path: "driverIds",
-        select: "licenseNumber userId",
-        populate: { path: "userId", select: "name phone" },
-      })
-      .populate("truckId", "registrationNumber capacity truckType")
-      .populate({
-        path: "driverId",
-        select: "licenseNumber userId",
-        populate: { path: "userId", select: "name phone" },
-      });
+      const snapshots = !session
+        ? await snapshotResources(
+            [...new Set([...oldTruckIds, ...newTruckIds])],
+            [...new Set([...oldDriverIds, ...newDriverIds])],
+            null
+          )
+        : null;
+      const tripSnapshot = !session ? trip.toObject() : null;
 
+      try {
+        if (trucksChanged || driversChanged) {
+          const removedTruckIds = oldTruckIds.filter((id) => !newTruckIds.includes(id));
+          const removedDriverIds = oldDriverIds.filter((id) => !newDriverIds.includes(id));
+          if (removedTruckIds.length > 0 || removedDriverIds.length > 0) {
+            await revertTruckAndDriverStatus(removedTruckIds, removedDriverIds, session, trip._id);
+          }
+
+          await Promise.all(
+            newTruckIds.map((truckId, index) =>
+              Truck.findByIdAndUpdate(
+                truckId,
+                {
+                  status: "ON_TRIP",
+                  currentDriverId: newDriverIds[index],
+                },
+                opts
+              )
+            )
+          );
+          await Driver.updateMany(
+            { _id: { $in: newDriverIds } },
+            { $set: { status: "ON_TRIP" } },
+            opts
+          );
+
+          const existingAssignments = ensureTripAssignments(trip);
+          trip.truckIds = newTruckIds;
+          trip.driverIds = newDriverIds;
+          trip.truckId = newTruckIds[0];
+          trip.driverId = newDriverIds[0];
+          trip.assignments = newTruckIds.map((tId, index) => {
+            const dId = newDriverIds[index];
+            const prev = existingAssignments.find(
+              (a) =>
+                a.truckId?.toString() === tId.toString() &&
+                a.driverId?.toString() === dId.toString()
+            );
+            return prev
+              ? {
+                  truckId: tId,
+                  driverId: dId,
+                  status: prev.status,
+                  endRequestedAt: prev.endRequestedAt,
+                  completedAt: prev.completedAt,
+                }
+              : { truckId: tId, driverId: dId, status: "ON_TRIP" };
+          });
+        }
+
+        Object.assign(trip, updateFields);
+        await trip.save(opts);
+        return trip;
+      } catch (err) {
+        if (!session) {
+          await restoreResources(snapshots);
+          if (tripSnapshot) {
+            await Trip.findByIdAndUpdate(trip._id, tripSnapshot).catch(() => {});
+          }
+        }
+        throw err;
+      }
+    });
+
+    const populatedTrip = await populateTripQuery(Trip.findById(updatedTrip._id));
     res.json({ success: true, data: normalizeTrip(populatedTrip) });
   } catch (error) {
     next(error);
@@ -400,7 +541,7 @@ exports.getTrips = async (req, res, next) => {
 
     if (req.query.status) {
       if (req.query.status === "ON_TRIP") {
-        query.status = { $in: ["ON_TRIP", "ACTIVE"] };
+        query.status = { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] };
       } else {
         query.status = req.query.status;
       }
@@ -413,22 +554,19 @@ exports.getTrips = async (req, res, next) => {
       query.$or = [{ driverIds: req.query.driverId }, { driverId: req.query.driverId }];
     }
 
-    const trips = await Trip.find(query)
-      .populate("truckIds", "registrationNumber capacity truckType")
-      .populate({
-        path: "driverIds",
-        select: "licenseNumber userId",
-        populate: { path: "userId", select: "name phone" },
-      })
-      .populate("truckId", "registrationNumber capacity truckType")
-      .populate({
-        path: "driverId",
-        select: "licenseNumber userId",
-        populate: { path: "userId", select: "name phone" },
-      })
-      .sort({ createdAt: -1 });
+    const trips = await populateTripQuery(Trip.find(query)).sort({ createdAt: -1 });
 
-    const normalizedTrips = trips.map(normalizeTrip);
+    let normalizedTrips = trips.map(normalizeTrip);
+    if (req.user?.role === "DRIVER" && req.query.status === "ON_TRIP" && req.driverId) {
+      const driverIdStr = req.driverId.toString();
+      normalizedTrips = normalizedTrips.filter((t) => {
+        const myAssignment = (t.assignments || []).find(
+          (a) => (a.driverId?._id || a.driverId)?.toString() === driverIdStr
+        );
+        return !myAssignment || myAssignment.status !== "COMPLETED";
+      });
+    }
+
     res.json({ success: true, data: normalizedTrips });
   } catch (error) {
     next(error);
@@ -437,19 +575,9 @@ exports.getTrips = async (req, res, next) => {
 
 exports.getTripById = async (req, res, next) => {
   try {
-    const trip = await Trip.findOne({ _id: req.params.id, ...req.scopedQuery })
-      .populate("truckIds", "registrationNumber capacity truckType")
-      .populate({
-        path: "driverIds",
-        select: "licenseNumber userId",
-        populate: { path: "userId", select: "name phone" },
-      })
-      .populate("truckId", "registrationNumber capacity truckType")
-      .populate({
-        path: "driverId",
-        select: "licenseNumber userId",
-        populate: { path: "userId", select: "name phone" },
-      });
+    const trip = await populateTripQuery(
+      Trip.findOne({ _id: req.params.id, ...req.scopedQuery })
+    );
 
     if (!trip) {
       return res.status(404).json({ success: false, message: "Trip not found" });
@@ -461,7 +589,13 @@ exports.getTripById = async (req, res, next) => {
   }
 };
 
-async function revertTruckAndDriverStatus(truckIdsInput, driverIdsInput) {
+async function revertTruckAndDriverStatus(
+  truckIdsInput,
+  driverIdsInput,
+  session = null,
+  excludeTripId = null
+) {
+  const opts = sessionOptions(session);
   const truckIds = Array.isArray(truckIdsInput)
     ? truckIdsInput
     : truckIdsInput
@@ -475,28 +609,36 @@ async function revertTruckAndDriverStatus(truckIdsInput, driverIdsInput) {
 
   for (const truckId of truckIds) {
     if (!truckId) continue;
-    const truck = await Truck.findById(truckId);
+    const truck = await withSession(Truck.findById(truckId), session);
     if (truck && truck.status === "ON_TRIP") {
-      const activeTripForTruck = await Trip.findOne({
-        $or: [{ truckIds: truck._id }, { truckId: truck._id }],
+      const activeQuery = {
+        $or: activeResourceMatchQuery([truck._id], null),
         status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
-      });
+      };
+      if (excludeTripId) activeQuery._id = { $ne: excludeTripId };
+      const activeTripForTruck = await withSession(Trip.findOne(activeQuery), session);
       if (!activeTripForTruck) {
-        await Truck.findByIdAndUpdate(truck._id, { status: "AVAILABLE", currentDriverId: null });
+        await Truck.findByIdAndUpdate(
+          truck._id,
+          { status: "AVAILABLE", currentDriverId: null },
+          opts
+        );
       }
     }
   }
 
   for (const driverId of driverIds) {
     if (!driverId) continue;
-    const driver = await Driver.findById(driverId);
+    const driver = await withSession(Driver.findById(driverId), session);
     if (driver && driver.status === "ON_TRIP") {
-      const activeTripForDriver = await Trip.findOne({
-        $or: [{ driverIds: driver._id }, { driverId: driver._id }],
+      const activeQuery = {
+        $or: activeResourceMatchQuery(null, [driver._id]),
         status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
-      });
+      };
+      if (excludeTripId) activeQuery._id = { $ne: excludeTripId };
+      const activeTripForDriver = await withSession(Trip.findOne(activeQuery), session);
       if (!activeTripForDriver) {
-        await Driver.findByIdAndUpdate(driver._id, { status: "AVAILABLE" });
+        await Driver.findByIdAndUpdate(driver._id, { status: "AVAILABLE" }, opts);
       }
     }
   }
@@ -507,20 +649,48 @@ exports.driverEndTrip = async (req, res, next) => {
     const trip = await Trip.findOne({ _id: req.params.id, ...req.scopedQuery });
     if (!trip) return res.status(404).json({ success: false, message: "Trip not found" });
 
-    if (trip.status !== "ON_TRIP" && trip.status !== "ACTIVE") {
-      return res.status(400).json({ success: false, message: "Only ON_TRIP trips can be ended" });
+    if (!["ON_TRIP", "ACTIVE", "DRIVER_ENDED"].includes(trip.status)) {
+      return res.status(400).json({ success: false, message: "Only active trips can be ended" });
     }
 
-    trip.status = "COMPLETED";
-    trip.actualEndDate = new Date();
-    await trip.save();
+    const assignments = ensureTripAssignments(trip);
+    let driverIdStr = req.driverId?.toString();
+    if (!driverIdStr && req.user?._id) {
+      const driverDoc = await Driver.findOne({ userId: req.user._id }).select("_id").lean();
+      driverIdStr = driverDoc?._id?.toString();
+    }
+    const myIdx = assignments.findIndex((a) => a.driverId?.toString() === driverIdStr);
 
-    await revertTruckAndDriverStatus(
-      trip.truckIds?.length ? trip.truckIds : trip.truckId,
-      trip.driverIds?.length ? trip.driverIds : trip.driverId
+    if (myIdx === -1) {
+      return res.status(403).json({ success: false, message: "You are not assigned to this trip" });
+    }
+
+    if (assignments[myIdx].status !== "ON_TRIP") {
+      return res.status(400).json({
+        success: false,
+        message: "You have already requested to end your leg of this trip",
+      });
+    }
+
+    assignments[myIdx].status = "END_REQUESTED";
+    assignments[myIdx].endRequestedAt = new Date();
+    trip.assignments = assignments;
+
+    const allDriversEndedOrCompleted = assignments.every(
+      (a) => a.status === "END_REQUESTED" || a.status === "COMPLETED"
     );
 
-    res.json({ success: true, data: normalizeTrip(trip) });
+    if (allDriversEndedOrCompleted) {
+      trip.status = "DRIVER_ENDED";
+      trip.actualEndDate = new Date();
+    } else {
+      trip.status = "ON_TRIP";
+    }
+
+    await trip.save();
+    const populatedTrip = await populateTripQuery(Trip.findById(trip._id));
+
+    res.json({ success: true, data: normalizeTrip(populatedTrip) });
   } catch (error) {
     next(error);
   }
@@ -528,35 +698,128 @@ exports.driverEndTrip = async (req, res, next) => {
 
 exports.ownerConfirmEndTrip = async (req, res, next) => {
   try {
-    const trip = await Trip.findOne({ _id: req.params.id, ownerId: req.user._id });
-    if (!trip) return res.status(404).json({ success: false, message: "Trip not found" });
+    const { actualRevenue, truckId, driverId } = req.body || {};
 
-    if (!["ON_TRIP", "ACTIVE", "DRIVER_ENDED", "COMPLETED"].includes(trip.status)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Trip cannot be completed from its current status" });
-    }
+    const { result: updatedTrip } = await withTransaction(async (session) => {
+      const opts = sessionOptions(session);
+      const trip = await withSession(
+        Trip.findOne({ _id: req.params.id, ownerId: req.user._id }),
+        session
+      );
+      if (!trip) throw new AppError("Trip not found", 404);
 
-    const { actualRevenue } = req.body || {};
-    if (actualRevenue !== undefined) {
-      trip.actualRevenue = actualRevenue;
-    } else if (trip.actualRevenue === undefined) {
-      trip.actualRevenue = trip.expectedRevenue; // fallback
-    }
+      if (!["ON_TRIP", "ACTIVE", "DRIVER_ENDED", "COMPLETED"].includes(trip.status)) {
+        throw new AppError("Trip cannot be completed from its current status", 400);
+      }
 
-    trip.status = "COMPLETED";
-    if (!trip.actualEndDate) trip.actualEndDate = new Date();
-    await trip.save();
+      const truckIds = trip.truckIds?.length ? trip.truckIds : trip.truckId ? [trip.truckId] : [];
+      const driverIds = trip.driverIds?.length
+        ? trip.driverIds
+        : trip.driverId
+        ? [trip.driverId]
+        : [];
+      const snapshots = !session ? await snapshotResources(truckIds, driverIds, null) : null;
+      const prevTripState = !session
+        ? {
+            status: trip.status,
+            actualRevenue: trip.actualRevenue,
+            actualEndDate: trip.actualEndDate,
+            assignments: trip.assignments,
+          }
+        : null;
 
-    await revertTruckAndDriverStatus(
-      trip.truckIds?.length ? trip.truckIds : trip.truckId,
-      trip.driverIds?.length ? trip.driverIds : trip.driverId
-    );
+      try {
+        const assignments = ensureTripAssignments(trip).map((a) => ({
+          truckId: a.truckId,
+          driverId: a.driverId,
+          status: a.status,
+          endRequestedAt: a.endRequestedAt,
+          completedAt: a.completedAt,
+        }));
 
-    // Trigger report generation asynchronously
-    await generateTripReport(trip._id);
+        if (truckId || driverId) {
+          const targetIdx = assignments.findIndex(
+            (a) =>
+              (truckId && a.truckId?.toString() === truckId.toString()) ||
+              (driverId && a.driverId?.toString() === driverId.toString())
+          );
+          if (targetIdx === -1) {
+            throw new AppError("Assigned truck/driver not found on this trip", 404);
+          }
 
-    res.json({ success: true, data: normalizeTrip(trip) });
+          const target = assignments[targetIdx];
+          if (target.status !== "COMPLETED") {
+            target.status = "COMPLETED";
+            target.completedAt = new Date();
+          }
+          trip.assignments = assignments;
+
+          const allCompleted = assignments.every((a) => a.status === "COMPLETED");
+          if (allCompleted) {
+            if (actualRevenue !== undefined) {
+              trip.actualRevenue = actualRevenue;
+            } else if (trip.actualRevenue === undefined) {
+              trip.actualRevenue = trip.expectedRevenue;
+            }
+            trip.status = "COMPLETED";
+            if (!trip.actualEndDate) trip.actualEndDate = new Date();
+            await trip.save(opts);
+
+            await revertTruckAndDriverStatus(
+              [target.truckId],
+              [target.driverId],
+              session,
+              trip._id
+            );
+            await generateTripReport(trip._id, session);
+          } else {
+            const anyStillOnTrip = assignments.some((a) => a.status === "ON_TRIP");
+            trip.status = anyStillOnTrip ? "ON_TRIP" : "DRIVER_ENDED";
+            await trip.save(opts);
+
+            await revertTruckAndDriverStatus(
+              [target.truckId],
+              [target.driverId],
+              session,
+              trip._id
+            );
+          }
+        } else {
+          const now = new Date();
+          trip.assignments = assignments.map((a) => ({
+            ...a,
+            status: "COMPLETED",
+            completedAt: a.completedAt || now,
+          }));
+
+          if (actualRevenue !== undefined) {
+            trip.actualRevenue = actualRevenue;
+          } else if (trip.actualRevenue === undefined) {
+            trip.actualRevenue = trip.expectedRevenue;
+          }
+
+          trip.status = "COMPLETED";
+          if (!trip.actualEndDate) trip.actualEndDate = now;
+          await trip.save(opts);
+
+          await revertTruckAndDriverStatus(truckIds, driverIds, session, trip._id);
+          await generateTripReport(trip._id, session);
+        }
+
+        return trip;
+      } catch (err) {
+        if (!session) {
+          await restoreResources(snapshots);
+          if (prevTripState) {
+            await Trip.findByIdAndUpdate(trip._id, prevTripState).catch(() => {});
+          }
+        }
+        throw err;
+      }
+    });
+
+    const populatedTrip = await populateTripQuery(Trip.findById(updatedTrip._id));
+    res.json({ success: true, data: normalizeTrip(populatedTrip) });
   } catch (error) {
     next(error);
   }
@@ -564,22 +827,43 @@ exports.ownerConfirmEndTrip = async (req, res, next) => {
 
 exports.cancelTrip = async (req, res, next) => {
   try {
-    const trip = await Trip.findOne({ _id: req.params.id, ownerId: req.user._id });
-    if (!trip) return res.status(404).json({ success: false, message: "Trip not found" });
+    const { result: cancelledTrip } = await withTransaction(async (session) => {
+      const opts = sessionOptions(session);
+      const trip = await withSession(
+        Trip.findOne({ _id: req.params.id, ownerId: req.user._id }),
+        session
+      );
+      if (!trip) throw new AppError("Trip not found", 404);
 
-    if (trip.status === "COMPLETED") {
-      return res.status(400).json({ success: false, message: "Cannot cancel a completed trip" });
-    }
+      if (trip.status === "COMPLETED") {
+        throw new AppError("Cannot cancel a completed trip", 400);
+      }
 
-    trip.status = "CANCELLED";
-    await trip.save();
+      const truckIds = trip.truckIds?.length ? trip.truckIds : trip.truckId ? [trip.truckId] : [];
+      const driverIds = trip.driverIds?.length
+        ? trip.driverIds
+        : trip.driverId
+        ? [trip.driverId]
+        : [];
+      const snapshots = !session ? await snapshotResources(truckIds, driverIds, null) : null;
+      const prevStatus = trip.status;
 
-    await revertTruckAndDriverStatus(
-      trip.truckIds?.length ? trip.truckIds : trip.truckId,
-      trip.driverIds?.length ? trip.driverIds : trip.driverId
-    );
+      try {
+        trip.status = "CANCELLED";
+        await trip.save(opts);
 
-    res.json({ success: true, data: normalizeTrip(trip) });
+        await revertTruckAndDriverStatus(truckIds, driverIds, session, trip._id);
+        return trip;
+      } catch (err) {
+        if (!session) {
+          await restoreResources(snapshots);
+          await Trip.findByIdAndUpdate(trip._id, { status: prevStatus }).catch(() => {});
+        }
+        throw err;
+      }
+    });
+
+    res.json({ success: true, data: normalizeTrip(cancelledTrip) });
   } catch (error) {
     next(error);
   }
@@ -600,20 +884,7 @@ exports.getTripHistory = async (req, res, next) => {
     }
     if (req.query.status) query.status = req.query.status;
 
-    const trips = await Trip.find(query)
-      .populate("truckIds", "registrationNumber capacity truckType")
-      .populate({
-        path: "driverIds",
-        select: "licenseNumber userId",
-        populate: { path: "userId", select: "name phone" },
-      })
-      .populate("truckId", "registrationNumber capacity truckType")
-      .populate({
-        path: "driverId",
-        select: "licenseNumber userId",
-        populate: { path: "userId", select: "name phone" },
-      })
-      .sort({ startDate: -1 });
+    const trips = await populateTripQuery(Trip.find(query)).sort({ startDate: -1 });
 
     const normalizedTrips = trips.map(normalizeTrip);
     res.json({ success: true, data: normalizedTrips });
@@ -624,18 +895,49 @@ exports.getTripHistory = async (req, res, next) => {
 
 exports.deleteTrip = async (req, res, next) => {
   try {
-    const trip = await Trip.findOne({ _id: req.params.id, ownerId: req.user._id });
-    if (!trip) return res.status(404).json({ success: false, message: "Trip not found" });
-
-    // If trip was active, revert driver and truck status
-    if (trip.status === "ON_TRIP" || trip.status === "ACTIVE") {
-      await revertTruckAndDriverStatus(
-        trip.truckIds?.length ? trip.truckIds : trip.truckId,
-        trip.driverIds?.length ? trip.driverIds : trip.driverId
+    await withTransaction(async (session) => {
+      const opts = sessionOptions(session);
+      const trip = await withSession(
+        Trip.findOne({ _id: req.params.id, ownerId: req.user._id }),
+        session
       );
-    }
+      if (!trip) throw new AppError("Trip not found", 404);
 
-    await Trip.findByIdAndDelete(trip._id);
+      const truckIds = trip.truckIds?.length ? trip.truckIds : trip.truckId ? [trip.truckId] : [];
+      const driverIds = trip.driverIds?.length
+        ? trip.driverIds
+        : trip.driverId
+        ? [trip.driverId]
+        : [];
+      const snapshots = !session ? await snapshotResources(truckIds, driverIds, null) : null;
+      const orphanBackups = !session
+        ? {
+            reports: await TripReport.find({ tripId: trip._id }).lean(),
+            expenses: await Expense.find({ tripId: trip._id }).lean(),
+          }
+        : null;
+
+      try {
+        if (["ON_TRIP", "ACTIVE", "DRIVER_ENDED"].includes(trip.status)) {
+          await revertTruckAndDriverStatus(truckIds, driverIds, session, trip._id);
+        }
+
+        await TripReport.deleteMany({ tripId: trip._id }, opts);
+        await Expense.deleteMany({ tripId: trip._id }, opts);
+        await Trip.findByIdAndDelete(trip._id, opts);
+      } catch (err) {
+        if (!session) {
+          await restoreResources(snapshots);
+          if (orphanBackups?.reports?.length) {
+            await TripReport.insertMany(orphanBackups.reports).catch(() => {});
+          }
+          if (orphanBackups?.expenses?.length) {
+            await Expense.insertMany(orphanBackups.expenses).catch(() => {});
+          }
+        }
+        throw err;
+      }
+    });
 
     res.json({ success: true, message: "Trip deleted successfully" });
   } catch (error) {

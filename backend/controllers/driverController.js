@@ -4,6 +4,7 @@ const Truck = require("../models/Truck");
 const Trip = require("../models/Trip");
 const bcrypt = require("bcryptjs");
 const { createDriverSchema, updateDriverSchema, updateDriverStatusSchema } = require("../validators/driverValidator");
+const { AppError, withTransaction, sessionOptions } = require("../utils/withTransaction");
 
 exports.createDriver = async (req, res, next) => {
   try {
@@ -17,46 +18,78 @@ exports.createDriver = async (req, res, next) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(parsedData.password, salt);
 
-    // Create User doc for driver
-    const newUser = await User.create({
-      name: parsedData.name,
-      email: parsedData.email,
-      phone: parsedData.phone,
-      passwordHash,
-      role: "DRIVER",
-      ownerId: req.user._id,
-    });
+    const { result } = await withTransaction(async (session) => {
+      const opts = sessionOptions(session);
+      let newUser = null;
+      let newDriver = null;
+      let previousTruckDriverId = undefined;
 
-    // Create Driver profile doc
-    const newDriver = await Driver.create({
-      userId: newUser._id,
-      ownerId: req.user._id,
-      licenseNumber: parsedData.licenseNumber,
-      licenseExpiry: parsedData.licenseExpiry,
-      address: parsedData.address,
-      emergencyContact: parsedData.emergencyContact,
-      imageUrl: parsedData.imageUrl,
-    });
+      try {
+        newUser = new User({
+          name: parsedData.name,
+          email: parsedData.email,
+          phone: parsedData.phone,
+          passwordHash,
+          role: "DRIVER",
+          ownerId: req.user._id,
+        });
+        await newUser.save(opts);
 
-    // If an initial truck assignment was chosen
-    let assignedTruck = null;
-    if (parsedData.truckId) {
-      const truck = await Truck.findOneAndUpdate(
-        { _id: parsedData.truckId, ownerId: req.user._id },
-        { currentDriverId: newDriver._id },
-        { new: true }
-      );
-      if (truck) {
-        assignedTruck = {
-          _id: truck._id,
-          registrationNumber: truck.registrationNumber,
-          capacity: truck.capacity,
-          truckType: truck.truckType,
-          model: truck.model,
-          isLiveTrip: false,
-        };
+        newDriver = new Driver({
+          userId: newUser._id,
+          ownerId: req.user._id,
+          licenseNumber: parsedData.licenseNumber,
+          licenseExpiry: parsedData.licenseExpiry,
+          address: parsedData.address,
+          emergencyContact: parsedData.emergencyContact,
+          imageUrl: parsedData.imageUrl,
+        });
+        await newDriver.save(opts);
+
+        let assignedTruck = null;
+        if (parsedData.truckId) {
+          const existingTruckQuery = Truck.findOne({ _id: parsedData.truckId, ownerId: req.user._id });
+          if (session) existingTruckQuery.session(session);
+          const existingTruck = await existingTruckQuery;
+          if (!existingTruck) {
+            throw new AppError("Assigned truck not found", 404);
+          }
+          previousTruckDriverId = existingTruck.currentDriverId;
+
+          const truck = await Truck.findOneAndUpdate(
+            { _id: parsedData.truckId, ownerId: req.user._id },
+            { currentDriverId: newDriver._id },
+            { new: true, ...opts }
+          );
+          if (truck) {
+            assignedTruck = {
+              _id: truck._id,
+              registrationNumber: truck.registrationNumber,
+              capacity: truck.capacity,
+              truckType: truck.truckType,
+              model: truck.model,
+              isLiveTrip: false,
+            };
+          }
+        }
+
+        return { newUser, newDriver, assignedTruck };
+      } catch (err) {
+        if (!session) {
+          if (parsedData.truckId && previousTruckDriverId !== undefined) {
+            await Truck.findOneAndUpdate(
+              { _id: parsedData.truckId, ownerId: req.user._id },
+              { currentDriverId: previousTruckDriverId }
+            ).catch(() => {});
+          }
+          if (newDriver?._id) await Driver.findByIdAndDelete(newDriver._id).catch(() => {});
+          if (newUser?._id) await User.findByIdAndDelete(newUser._id).catch(() => {});
+        }
+        throw err;
       }
-    }
+    });
+
+    const { newUser, newDriver, assignedTruck } = result;
 
     res.status(201).json({
       success: true,
@@ -100,6 +133,10 @@ exports.getDrivers = async (req, res, next) => {
       if (Array.isArray(trip.driverIds) && trip.driverIds.length > 0) {
         trip.driverIds.forEach((d, idx) => {
           const dId = (d?._id || d)?.toString();
+          const assignment = (trip.assignments || []).find(
+            (a) => (a.driverId?._id || a.driverId)?.toString() === dId
+          );
+          if (assignment && assignment.status === "COMPLETED") return;
           if (dId && !driverActiveTripMap.has(dId)) {
             const pairedTruck = (trip.truckIds && trip.truckIds[idx]) || trip.truckId || null;
             driverActiveTripMap.set(dId, { trip, pairedTruck });
@@ -108,6 +145,10 @@ exports.getDrivers = async (req, res, next) => {
       }
       if (trip.driverId) {
         const dId = (trip.driverId?._id || trip.driverId)?.toString();
+        const assignment = (trip.assignments || []).find(
+          (a) => (a.driverId?._id || a.driverId)?.toString() === dId
+        );
+        if (assignment && assignment.status === "COMPLETED") return;
         if (dId && !driverActiveTripMap.has(dId)) {
           const pairedTruck = (trip.truckIds && trip.truckIds[0]) || trip.truckId || null;
           driverActiveTripMap.set(dId, { trip, pairedTruck });
