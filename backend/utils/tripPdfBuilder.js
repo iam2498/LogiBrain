@@ -200,11 +200,11 @@ exports.generateTripPdf = async (trip, expenses, res) => {
       truckCount: truckDriverPairs.length,
       truck: {
         registrationNumber: rawTrucks.length > 0
-          ? rawTrucks.map(t => t.registrationNumber).join(', ')
+          ? rawTrucks.map(t => t?.registrationNumber || "Removed Truck").join(', ')
           : "N/A",
         truckType: rawTrucks[0]?.truckType || "N/A",
         capacityStr: rawTrucks.length > 0
-          ? `${rawTrucks.reduce((sum, t) => sum + (parseFloat(t.capacity) || 0), 0)} Tons`
+          ? `${rawTrucks.reduce((sum, t) => sum + (parseFloat(t?.capacity) || 0), 0)} Tons`
           : "N/A"
       },
       driver: {

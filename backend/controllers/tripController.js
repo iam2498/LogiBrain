@@ -6,6 +6,10 @@ const TripReport = require("../models/TripReport");
 const { createTripSchema, updateTripSchema } = require("../validators/tripValidator");
 const { generateTripReport } = require("../services/tripReportService");
 const { AppError, withTransaction, sessionOptions } = require("../utils/withTransaction");
+const {
+  ACTIVE_TRIP_STATUSES,
+  activeResourceMatchQuery,
+} = require("../utils/tripAssignmentHelper");
 
 function withSession(query, session) {
   return session ? query.session(session) : query;
@@ -115,33 +119,6 @@ function ensureTripAssignments(trip) {
     driverId: driverIds[idx]?._id || driverIds[idx],
     status: fallbackStatus,
   }));
-}
-
-function activeResourceMatchQuery(truckIds, driverIds) {
-  const orConditions = [];
-  if (truckIds?.length) {
-    orConditions.push(
-      { assignments: { $elemMatch: { truckId: { $in: truckIds }, status: { $ne: "COMPLETED" } } } },
-      {
-        $and: [
-          { $or: [{ assignments: { $exists: false } }, { assignments: { $size: 0 } }] },
-          { $or: [{ truckIds: { $in: truckIds } }, { truckId: { $in: truckIds } }] },
-        ],
-      }
-    );
-  }
-  if (driverIds?.length) {
-    orConditions.push(
-      { assignments: { $elemMatch: { driverId: { $in: driverIds }, status: { $ne: "COMPLETED" } } } },
-      {
-        $and: [
-          { $or: [{ assignments: { $exists: false } }, { assignments: { $size: 0 } }] },
-          { $or: [{ driverIds: { $in: driverIds } }, { driverId: { $in: driverIds } }] },
-        ],
-      }
-    );
-  }
-  return orConditions;
 }
 
 // Helper to normalize populated trip objects
@@ -403,8 +380,8 @@ exports.updateTrip = async (req, res, next) => {
           const activeCheck = await withSession(
             Trip.findOne({
               _id: { $ne: trip._id },
-              $or: [{ truckIds: tId }, { truckId: tId }],
-              status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
+              $or: activeResourceMatchQuery([tId], null),
+              status: { $in: ACTIVE_TRIP_STATUSES },
             }),
             session
           );
@@ -431,8 +408,8 @@ exports.updateTrip = async (req, res, next) => {
           const activeCheck = await withSession(
             Trip.findOne({
               _id: { $ne: trip._id },
-              $or: [{ driverIds: dId }, { driverId: dId }],
-              status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
+              $or: activeResourceMatchQuery(null, [dId]),
+              status: { $in: ACTIVE_TRIP_STATUSES },
             }),
             session
           );
@@ -472,30 +449,8 @@ exports.updateTrip = async (req, res, next) => {
             await revertTruckAndDriverStatus(removedTruckIds, removedDriverIds, session, trip._id);
           }
 
-          await Promise.all(
-            newTruckIds.map((truckId, index) =>
-              Truck.findByIdAndUpdate(
-                truckId,
-                {
-                  status: "ON_TRIP",
-                  currentDriverId: newDriverIds[index],
-                },
-                opts
-              )
-            )
-          );
-          await Driver.updateMany(
-            { _id: { $in: newDriverIds } },
-            { $set: { status: "ON_TRIP" } },
-            opts
-          );
-
           const existingAssignments = ensureTripAssignments(trip);
-          trip.truckIds = newTruckIds;
-          trip.driverIds = newDriverIds;
-          trip.truckId = newTruckIds[0];
-          trip.driverId = newDriverIds[0];
-          trip.assignments = newTruckIds.map((tId, index) => {
+          const nextAssignments = newTruckIds.map((tId, index) => {
             const dId = newDriverIds[index];
             const prev = existingAssignments.find(
               (a) =>
@@ -512,6 +467,38 @@ exports.updateTrip = async (req, res, next) => {
                 }
               : { truckId: tId, driverId: dId, status: "ON_TRIP" };
           });
+
+          const activeAssignments = nextAssignments.filter((a) => a.status !== "COMPLETED");
+          await Promise.all(
+            activeAssignments.map((a) =>
+              Truck.findByIdAndUpdate(
+                a.truckId,
+                {
+                  status: "ON_TRIP",
+                  currentDriverId: a.driverId,
+                },
+                opts
+              )
+            )
+          );
+          if (activeAssignments.length > 0) {
+            await Driver.updateMany(
+              { _id: { $in: activeAssignments.map((a) => a.driverId) } },
+              { $set: { status: "ON_TRIP" } },
+              opts
+            );
+          }
+
+          trip.truckIds = newTruckIds;
+          trip.driverIds = newDriverIds;
+          trip.truckId = newTruckIds[0];
+          trip.driverId = newDriverIds[0];
+          trip.assignments = nextAssignments;
+          if (nextAssignments.some((a) => a.status === "ON_TRIP")) {
+            trip.status = "ON_TRIP";
+          } else if (nextAssignments.some((a) => a.status === "END_REQUESTED")) {
+            trip.status = "DRIVER_ENDED";
+          }
         }
 
         Object.assign(trip, updateFields);
@@ -541,17 +528,31 @@ exports.getTrips = async (req, res, next) => {
 
     if (req.query.status) {
       if (req.query.status === "ON_TRIP") {
-        query.status = { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] };
+        query.status = { $in: ACTIVE_TRIP_STATUSES };
       } else {
         query.status = req.query.status;
       }
     }
 
+    const andFilters = [];
     if (req.query.truckId) {
-      query.$or = [{ truckIds: req.query.truckId }, { truckId: req.query.truckId }];
+      andFilters.push({
+        $or:
+          req.query.status === "ON_TRIP"
+            ? activeResourceMatchQuery([req.query.truckId], null)
+            : [{ truckIds: req.query.truckId }, { truckId: req.query.truckId }],
+      });
     }
     if (req.query.driverId) {
-      query.$or = [{ driverIds: req.query.driverId }, { driverId: req.query.driverId }];
+      andFilters.push({
+        $or:
+          req.query.status === "ON_TRIP"
+            ? activeResourceMatchQuery(null, [req.query.driverId])
+            : [{ driverIds: req.query.driverId }, { driverId: req.query.driverId }],
+      });
+    }
+    if (andFilters.length > 0) {
+      query.$and = [...(query.$and || []), ...andFilters];
     }
 
     const trips = await populateTripQuery(Trip.find(query)).sort({ createdAt: -1 });

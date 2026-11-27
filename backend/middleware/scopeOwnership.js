@@ -16,6 +16,11 @@ const scopeOwnership = async (req, res, next) => {
       req.scopedQuery = {
         $or: [{ driverIds: driver._id }, { driverId: driver._id }],
       }; // Driver can only see stuff assigned to them
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Business resources are restricted to fleet owners and drivers",
+      });
     }
     next();
   } catch (error) {

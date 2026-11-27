@@ -17,12 +17,8 @@ import Reports from "../pages/owner/Reports";
 // Driver
 import DriverDashboard from "../pages/driver/DriverDashboard";
 
-// Admin
+// Admin (Single-Page Platform Administration Dashboard)
 import AdminDashboard from "../pages/admin/AdminDashboard";
-import UserManagement from "../pages/admin/UserManagement";
-import OwnerManagement from "../pages/admin/OwnerManagement";
-import AllTripsView from "../pages/admin/AllTripsView";
-import AdminReports from "../pages/admin/AdminReports";
 
 const AppRoutes = () => {
   return (
@@ -50,10 +46,7 @@ const AppRoutes = () => {
       {/* Admin Routes */}
       <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
-        <Route path="/admin/users" element={<UserManagement />} />
-        <Route path="/admin/owners" element={<OwnerManagement />} />
-        <Route path="/admin/trips" element={<AllTripsView />} />
-        <Route path="/admin/reports" element={<AdminReports />} />
+        <Route path="/admin/*" element={<Navigate to="/admin/dashboard" replace />} />
       </Route>
       
       {/* 404 */}

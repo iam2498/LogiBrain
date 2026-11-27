@@ -145,6 +145,37 @@ export default function Drivers() {
     }
   };
 
+  const handleDeleteDriver = async (driver) => {
+    if (!driver) return;
+    const driverName = driver.userId?.name || driver.licenseNumber || "this driver";
+    if (
+      !window.confirm(
+        `Are you sure you want to remove ${driverName}? Their driver profile and login account will be permanently deleted.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await axiosClient.delete(`/drivers/${driver._id}`);
+      const remaining = drivers.filter((d) => d._id !== driver._id);
+      setDrivers(remaining);
+      setSelectedDriver((prev) =>
+        prev?._id === driver._id ? (remaining.length > 0 ? remaining[0] : null) : prev
+      );
+      setAllTrucks((prev) =>
+        prev.map((t) =>
+          (t.currentDriverId?._id || t.currentDriverId) === driver._id
+            ? { ...t, currentDriverId: null }
+            : t
+        )
+      );
+      showSuccess("Driver removed successfully!");
+    } catch (error) {
+      showError(error.response?.data?.message || "Failed to remove driver");
+    }
+  };
+
   useEffect(() => {
     const fetchDrivers = async () => {
       try {
@@ -448,10 +479,7 @@ export default function Drivers() {
                                 <button onClick={() => { setIsDropdownOpen(false); handleOpenProfileModal(selectedDriver); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-on-surface hover:bg-surface-container-low flex items-center gap-2">
                                   <span className="material-symbols-outlined text-[18px]">edit</span> Edit Profile
                                 </button>
-                                <button onClick={() => { setIsDropdownOpen(false); showInfo("Suspend driver coming soon"); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-amber-600 hover:bg-amber-50 flex items-center gap-2">
-                                  <span className="material-symbols-outlined text-[18px]">block</span> Suspend Driver
-                                </button>
-                                <button onClick={() => { setIsDropdownOpen(false); showInfo("Delete account coming soon"); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
+                                <button onClick={() => { setIsDropdownOpen(false); handleDeleteDriver(selectedDriver); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
                                   <span className="material-symbols-outlined text-[18px]">delete</span> Delete Account
                                 </button>
                               </div>

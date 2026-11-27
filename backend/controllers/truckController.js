@@ -2,6 +2,12 @@ const Truck = require("../models/Truck");
 const Trip = require("../models/Trip");
 const Expense = require("../models/Expense");
 const { createTruckSchema, updateTruckSchema, updateTruckStatusSchema } = require("../validators/truckValidator");
+const {
+  ACTIVE_TRIP_STATUSES,
+  activeResourceMatchQuery,
+  findActiveTripForTruck,
+  formatTruckWithActiveTrip,
+} = require("../utils/tripAssignmentHelper");
 
 exports.createTruck = async (req, res, next) => {
   try {
@@ -44,11 +50,8 @@ exports.getTrucks = async (req, res, next) => {
     
     const truckObjectIds = trucks.map(t => t._id);
     const activeTrips = await Trip.find({
-      $or: [
-        { truckIds: { $in: truckObjectIds } },
-        { truckId: { $in: truckObjectIds } }
-      ],
-      status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] }
+      $or: activeResourceMatchQuery(truckObjectIds, null),
+      status: { $in: ACTIVE_TRIP_STATUSES }
     })
       .populate({
         path: "driverIds",
@@ -141,59 +144,11 @@ exports.getTruckById = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Truck not found" });
     }
 
-    const activeTrip = await Trip.findOne({
-      $or: [{ truckIds: truck._id }, { truckId: truck._id }],
-      status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] }
-    })
-      .populate({
-        path: "driverIds",
-        select: "licenseNumber userId status",
-        populate: { path: "userId", select: "name email phone" }
-      })
-      .populate({
-        path: "driverId",
-        select: "licenseNumber userId status",
-        populate: { path: "userId", select: "name email phone" }
-      });
-
-    let status = truck.status;
-    if (status === "ACTIVE") status = "AVAILABLE";
-    let currentDriverId = truck.currentDriverId;
-    let activeTripData = null;
-
-    if (activeTrip) {
-      status = "ON_TRIP";
-      activeTripData = {
-        _id: activeTrip._id,
-        source: activeTrip.source,
-        destination: activeTrip.destination,
-        status: activeTrip.status,
-        material: activeTrip.material,
-      };
-
-      if (activeTrip.truckIds && activeTrip.truckIds.length) {
-        const truckIndex = activeTrip.truckIds.findIndex(
-          id => (id._id || id).toString() === truck._id.toString()
-        );
-        if (truckIndex !== -1 && activeTrip.driverIds && activeTrip.driverIds[truckIndex]) {
-          currentDriverId = activeTrip.driverIds[truckIndex];
-        }
-      }
-      if (!currentDriverId && activeTrip.truckId && (activeTrip.truckId._id || activeTrip.truckId).toString() === truck._id.toString()) {
-        currentDriverId = activeTrip.driverId || (activeTrip.driverIds && activeTrip.driverIds[0]);
-      }
-    } else if (status === "ON_TRIP") {
-      status = "AVAILABLE";
-    }
+    const activeTrip = await findActiveTripForTruck(Trip, truck._id);
 
     res.json({
       success: true,
-      data: {
-        ...truck.toObject(),
-        status,
-        currentDriverId,
-        activeTrip: activeTripData
-      }
+      data: formatTruckWithActiveTrip(truck, activeTrip),
     });
   } catch (error) {
     next(error);
@@ -228,59 +183,11 @@ exports.updateTruck = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Truck not found" });
     }
 
-    const activeTrip = await Trip.findOne({
-      $or: [{ truckIds: truck._id }, { truckId: truck._id }],
-      status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] }
-    })
-      .populate({
-        path: "driverIds",
-        select: "licenseNumber userId status",
-        populate: { path: "userId", select: "name email phone" }
-      })
-      .populate({
-        path: "driverId",
-        select: "licenseNumber userId status",
-        populate: { path: "userId", select: "name email phone" }
-      });
-
-    let status = truck.status;
-    if (status === "ACTIVE") status = "AVAILABLE";
-    let currentDriverId = truck.currentDriverId;
-    let activeTripData = null;
-
-    if (activeTrip) {
-      status = "ON_TRIP";
-      activeTripData = {
-        _id: activeTrip._id,
-        source: activeTrip.source,
-        destination: activeTrip.destination,
-        status: activeTrip.status,
-        material: activeTrip.material,
-      };
-
-      if (activeTrip.truckIds && activeTrip.truckIds.length) {
-        const truckIndex = activeTrip.truckIds.findIndex(
-          id => (id._id || id).toString() === truck._id.toString()
-        );
-        if (truckIndex !== -1 && activeTrip.driverIds && activeTrip.driverIds[truckIndex]) {
-          currentDriverId = activeTrip.driverIds[truckIndex];
-        }
-      }
-      if (!currentDriverId && activeTrip.truckId && (activeTrip.truckId._id || activeTrip.truckId).toString() === truck._id.toString()) {
-        currentDriverId = activeTrip.driverId || (activeTrip.driverIds && activeTrip.driverIds[0]);
-      }
-    } else if (status === "ON_TRIP") {
-      status = "AVAILABLE";
-    }
+    const activeTrip = await findActiveTripForTruck(Trip, truck._id);
 
     res.json({
       success: true,
-      data: {
-        ...truck.toObject(),
-        status,
-        currentDriverId,
-        activeTrip: activeTripData
-      }
+      data: formatTruckWithActiveTrip(truck, activeTrip),
     });
   } catch (error) {
     next(error);
@@ -301,59 +208,11 @@ exports.updateTruckStatus = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Truck not found" });
     }
 
-    const activeTrip = await Trip.findOne({
-      $or: [{ truckIds: truck._id }, { truckId: truck._id }],
-      status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] }
-    })
-      .populate({
-        path: "driverIds",
-        select: "licenseNumber userId status",
-        populate: { path: "userId", select: "name email phone" }
-      })
-      .populate({
-        path: "driverId",
-        select: "licenseNumber userId status",
-        populate: { path: "userId", select: "name email phone" }
-      });
-
-    let resolvedStatus = truck.status;
-    if (resolvedStatus === "ACTIVE") resolvedStatus = "AVAILABLE";
-    let currentDriverId = truck.currentDriverId;
-    let activeTripData = null;
-
-    if (activeTrip) {
-      resolvedStatus = "ON_TRIP";
-      activeTripData = {
-        _id: activeTrip._id,
-        source: activeTrip.source,
-        destination: activeTrip.destination,
-        status: activeTrip.status,
-        material: activeTrip.material,
-      };
-
-      if (activeTrip.truckIds && activeTrip.truckIds.length) {
-        const truckIndex = activeTrip.truckIds.findIndex(
-          id => (id._id || id).toString() === truck._id.toString()
-        );
-        if (truckIndex !== -1 && activeTrip.driverIds && activeTrip.driverIds[truckIndex]) {
-          currentDriverId = activeTrip.driverIds[truckIndex];
-        }
-      }
-      if (!currentDriverId && activeTrip.truckId && (activeTrip.truckId._id || activeTrip.truckId).toString() === truck._id.toString()) {
-        currentDriverId = activeTrip.driverId || (activeTrip.driverIds && activeTrip.driverIds[0]);
-      }
-    } else if (resolvedStatus === "ON_TRIP") {
-      resolvedStatus = "AVAILABLE";
-    }
+    const activeTrip = await findActiveTripForTruck(Trip, truck._id);
 
     res.json({
       success: true,
-      data: {
-        ...truck.toObject(),
-        status: resolvedStatus,
-        currentDriverId,
-        activeTrip: activeTripData
-      }
+      data: formatTruckWithActiveTrip(truck, activeTrip),
     });
   } catch (error) {
     next(error);
@@ -379,7 +238,11 @@ exports.getTruckHistory = async (req, res, next) => {
         select: "licenseNumber userId",
         populate: { path: "userId", select: "name" },
       })
-      .populate("driverId", "licenseNumber");
+      .populate({
+        path: "driverId",
+        select: "licenseNumber userId",
+        populate: { path: "userId", select: "name" },
+      });
     const expenses = await Expense.find({ truckId, ownerId });
 
     const totalRevenue = trips.reduce((acc, trip) => acc + (trip.actualRevenue || trip.expectedRevenue || 0), 0);
@@ -397,6 +260,33 @@ exports.getTruckHistory = async (req, res, next) => {
         },
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteTruck = async (req, res, next) => {
+  try {
+    const truck = await Truck.findOne({ _id: req.params.id, ownerId: req.user._id });
+    if (!truck) {
+      return res.status(404).json({ success: false, message: "Truck not found" });
+    }
+
+    const activeTrip = await Trip.findOne({
+      ownerId: req.user._id,
+      status: { $in: ACTIVE_TRIP_STATUSES },
+      $or: activeResourceMatchQuery([truck._id], null),
+    });
+
+    if (activeTrip) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot remove truck while it is assigned to an active trip",
+      });
+    }
+
+    await Truck.findByIdAndDelete(truck._id);
+    res.json({ success: true, message: "Truck removed successfully" });
   } catch (error) {
     next(error);
   }

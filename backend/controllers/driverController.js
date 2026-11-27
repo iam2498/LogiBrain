@@ -5,6 +5,12 @@ const Trip = require("../models/Trip");
 const bcrypt = require("bcryptjs");
 const { createDriverSchema, updateDriverSchema, updateDriverStatusSchema } = require("../validators/driverValidator");
 const { AppError, withTransaction, sessionOptions } = require("../utils/withTransaction");
+const {
+  ACTIVE_TRIP_STATUSES,
+  activeResourceMatchQuery,
+  findActiveTripForDriver,
+  formatDriverWithActiveTrip,
+} = require("../utils/tripAssignmentHelper");
 
 exports.createDriver = async (req, res, next) => {
   try {
@@ -118,11 +124,8 @@ exports.getDrivers = async (req, res, next) => {
 
     // 2. Fetch all active trips
     const activeTrips = await Trip.find({
-      $or: [
-        { driverIds: { $in: driverObjectIds } },
-        { driverId: { $in: driverObjectIds } },
-      ],
-      status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
+      $or: activeResourceMatchQuery(null, driverObjectIds),
+      status: { $in: ACTIVE_TRIP_STATUSES },
     })
       .populate("truckIds", "registrationNumber capacity truckType model")
       .populate("truckId", "registrationNumber capacity truckType model");
@@ -235,72 +238,14 @@ exports.getDriverById = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Driver not found" });
     }
 
-    const dIdStr = driver._id.toString();
-    const activeTrip = await Trip.findOne({
-      $or: [{ driverIds: driver._id }, { driverId: driver._id }],
-      status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
-    })
-      .populate("truckIds", "registrationNumber capacity truckType model")
-      .populate("truckId", "registrationNumber capacity truckType model");
-
-    let status = driver.status;
-    if (status === "ACTIVE") status = "AVAILABLE";
-    if (status === "INACTIVE") status = "ON_LEAVE";
-
-    let assignedTruck = null;
-    let activeTripInfo = null;
-
-    if (activeTrip) {
-      status = "ON_TRIP";
-      let pairedTruck = null;
-      if (Array.isArray(activeTrip.driverIds) && activeTrip.driverIds.length > 0) {
-        const idx = activeTrip.driverIds.findIndex((d) => (d?._id || d)?.toString() === dIdStr);
-        if (idx !== -1 && activeTrip.truckIds && activeTrip.truckIds[idx]) {
-          pairedTruck = activeTrip.truckIds[idx];
-        }
-      }
-      if (!pairedTruck) {
-        pairedTruck = (activeTrip.truckIds && activeTrip.truckIds[0]) || activeTrip.truckId || null;
-      }
-      if (pairedTruck) {
-        assignedTruck = {
-          _id: pairedTruck._id,
-          registrationNumber: pairedTruck.registrationNumber,
-          capacity: pairedTruck.capacity,
-          truckType: pairedTruck.truckType,
-          model: pairedTruck.model,
-          isLiveTrip: true,
-        };
-      }
-      activeTripInfo = {
-        _id: activeTrip._id,
-        source: activeTrip.source,
-        destination: activeTrip.destination,
-        status: activeTrip.status,
-      };
-    } else {
-      if (status === "ON_TRIP") status = "AVAILABLE";
-      const defaultTruck = await Truck.findOne({ currentDriverId: driver._id, ownerId: req.user._id });
-      if (defaultTruck) {
-        assignedTruck = {
-          _id: defaultTruck._id,
-          registrationNumber: defaultTruck.registrationNumber,
-          capacity: defaultTruck.capacity,
-          truckType: defaultTruck.truckType,
-          model: defaultTruck.model,
-          isLiveTrip: false,
-        };
-      }
-    }
+    const activeTrip = await findActiveTripForDriver(Trip, driver._id);
+    const defaultTruck = activeTrip
+      ? null
+      : await Truck.findOne({ currentDriverId: driver._id, ownerId: req.user._id });
 
     res.json({
       success: true,
-      data: {
-        ...driver.toObject(),
-        status,
-        assignedTruck,
-        activeTrip: activeTripInfo,
-      },
+      data: formatDriverWithActiveTrip(driver, activeTrip, defaultTruck),
     });
   } catch (error) {
     next(error);
@@ -368,72 +313,14 @@ exports.updateDriver = async (req, res, next) => {
       }
     }
 
-    const dIdStr = updatedDriver._id.toString();
-    const activeTrip = await Trip.findOne({
-      $or: [{ driverIds: updatedDriver._id }, { driverId: updatedDriver._id }],
-      status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
-    })
-      .populate("truckIds", "registrationNumber capacity truckType model")
-      .populate("truckId", "registrationNumber capacity truckType model");
-
-    let status = updatedDriver.status;
-    if (status === "ACTIVE") status = "AVAILABLE";
-    if (status === "INACTIVE") status = "ON_LEAVE";
-
-    let assignedTruck = null;
-    let activeTripInfo = null;
-
-    if (activeTrip) {
-      status = "ON_TRIP";
-      let pairedTruck = null;
-      if (Array.isArray(activeTrip.driverIds) && activeTrip.driverIds.length > 0) {
-        const idx = activeTrip.driverIds.findIndex((d) => (d?._id || d)?.toString() === dIdStr);
-        if (idx !== -1 && activeTrip.truckIds && activeTrip.truckIds[idx]) {
-          pairedTruck = activeTrip.truckIds[idx];
-        }
-      }
-      if (!pairedTruck) {
-        pairedTruck = (activeTrip.truckIds && activeTrip.truckIds[0]) || activeTrip.truckId || null;
-      }
-      if (pairedTruck) {
-        assignedTruck = {
-          _id: pairedTruck._id,
-          registrationNumber: pairedTruck.registrationNumber,
-          capacity: pairedTruck.capacity,
-          truckType: pairedTruck.truckType,
-          model: pairedTruck.model,
-          isLiveTrip: true,
-        };
-      }
-      activeTripInfo = {
-        _id: activeTrip._id,
-        source: activeTrip.source,
-        destination: activeTrip.destination,
-        status: activeTrip.status,
-      };
-    } else {
-      if (status === "ON_TRIP") status = "AVAILABLE";
-      const defaultTruck = await Truck.findOne({ currentDriverId: updatedDriver._id, ownerId });
-      if (defaultTruck) {
-        assignedTruck = {
-          _id: defaultTruck._id,
-          registrationNumber: defaultTruck.registrationNumber,
-          capacity: defaultTruck.capacity,
-          truckType: defaultTruck.truckType,
-          model: defaultTruck.model,
-          isLiveTrip: false,
-        };
-      }
-    }
+    const activeTrip = await findActiveTripForDriver(Trip, updatedDriver._id);
+    const defaultTruck = activeTrip
+      ? null
+      : await Truck.findOne({ currentDriverId: updatedDriver._id, ownerId });
 
     res.json({
       success: true,
-      data: {
-        ...updatedDriver.toObject(),
-        status,
-        assignedTruck,
-        activeTrip: activeTripInfo,
-      },
+      data: formatDriverWithActiveTrip(updatedDriver, activeTrip, defaultTruck),
     });
   } catch (error) {
     next(error);
@@ -458,73 +345,80 @@ exports.updateDriverStatus = async (req, res, next) => {
 
     await User.findByIdAndUpdate(driver.userId, { isActive: true });
 
-    const dIdStr = driver._id.toString();
-    const activeTrip = await Trip.findOne({
-      $or: [{ driverIds: driver._id }, { driverId: driver._id }],
-      status: { $in: ["ON_TRIP", "ACTIVE", "DRIVER_ENDED"] },
-    })
-      .populate("truckIds", "registrationNumber capacity truckType model")
-      .populate("truckId", "registrationNumber capacity truckType model");
-
-    let resolvedStatus = driver.status;
-    if (resolvedStatus === "ACTIVE") resolvedStatus = "AVAILABLE";
-    if (resolvedStatus === "INACTIVE") resolvedStatus = "ON_LEAVE";
-
-    let assignedTruck = null;
-    let activeTripInfo = null;
-
-    if (activeTrip) {
-      resolvedStatus = "ON_TRIP";
-      let pairedTruck = null;
-      if (Array.isArray(activeTrip.driverIds) && activeTrip.driverIds.length > 0) {
-        const idx = activeTrip.driverIds.findIndex((d) => (d?._id || d)?.toString() === dIdStr);
-        if (idx !== -1 && activeTrip.truckIds && activeTrip.truckIds[idx]) {
-          pairedTruck = activeTrip.truckIds[idx];
-        }
-      }
-      if (!pairedTruck) {
-        pairedTruck = (activeTrip.truckIds && activeTrip.truckIds[0]) || activeTrip.truckId || null;
-      }
-      if (pairedTruck) {
-        assignedTruck = {
-          _id: pairedTruck._id,
-          registrationNumber: pairedTruck.registrationNumber,
-          capacity: pairedTruck.capacity,
-          truckType: pairedTruck.truckType,
-          model: pairedTruck.model,
-          isLiveTrip: true,
-        };
-      }
-      activeTripInfo = {
-        _id: activeTrip._id,
-        source: activeTrip.source,
-        destination: activeTrip.destination,
-        status: activeTrip.status,
-      };
-    } else {
-      if (resolvedStatus === "ON_TRIP") resolvedStatus = "AVAILABLE";
-      const defaultTruck = await Truck.findOne({ currentDriverId: driver._id, ownerId });
-      if (defaultTruck) {
-        assignedTruck = {
-          _id: defaultTruck._id,
-          registrationNumber: defaultTruck.registrationNumber,
-          capacity: defaultTruck.capacity,
-          truckType: defaultTruck.truckType,
-          model: defaultTruck.model,
-          isLiveTrip: false,
-        };
-      }
-    }
+    const activeTrip = await findActiveTripForDriver(Trip, driver._id);
+    const defaultTruck = activeTrip
+      ? null
+      : await Truck.findOne({ currentDriverId: driver._id, ownerId });
 
     res.json({
       success: true,
-      data: {
-        ...driver.toObject(),
-        status: resolvedStatus,
-        assignedTruck,
-        activeTrip: activeTripInfo,
-      },
+      data: formatDriverWithActiveTrip(driver, activeTrip, defaultTruck),
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteDriver = async (req, res, next) => {
+  try {
+    const driverId = req.params.id;
+    const ownerId = req.user._id;
+
+    const driver = await Driver.findOne({ _id: driverId, ownerId });
+    if (!driver) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+
+    const activeTrip = await Trip.findOne({
+      ownerId,
+      status: { $in: ACTIVE_TRIP_STATUSES },
+      $or: activeResourceMatchQuery(null, [driver._id]),
+    });
+
+    if (activeTrip) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot remove driver while they are assigned to an active trip",
+      });
+    }
+
+    await withTransaction(async (session) => {
+      const opts = sessionOptions(session);
+      const affectedTrucks = !session
+        ? await Truck.find({ currentDriverId: driver._id, ownerId }).select("_id").lean()
+        : [];
+      const driverBackup = !session ? driver.toObject() : null;
+      const userQuery = User.findOne({ _id: driver.userId, role: "DRIVER", ownerId });
+      if (session) userQuery.session(session);
+      const userDoc = await userQuery;
+      const userBackup = !session && userDoc ? userDoc.toObject() : null;
+
+      try {
+        await Truck.updateMany(
+          { currentDriverId: driver._id, ownerId },
+          { currentDriverId: null },
+          opts
+        );
+        await Driver.findByIdAndDelete(driver._id, opts);
+        if (userDoc) {
+          await User.findByIdAndDelete(userDoc._id, opts);
+        }
+      } catch (err) {
+        if (!session) {
+          if (userBackup) await User.create(userBackup).catch(() => {});
+          if (driverBackup) await Driver.create(driverBackup).catch(() => {});
+          if (affectedTrucks.length > 0) {
+            await Truck.updateMany(
+              { _id: { $in: affectedTrucks.map((t) => t._id) } },
+              { currentDriverId: driver._id }
+            ).catch(() => {});
+          }
+        }
+        throw err;
+      }
+    });
+
+    res.json({ success: true, message: "Driver removed successfully" });
   } catch (error) {
     next(error);
   }

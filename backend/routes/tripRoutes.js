@@ -16,6 +16,7 @@ const scopeOwnership = require("../middleware/scopeOwnership");
 const router = express.Router();
 
 router.use(authenticate);
+router.use(authorize("OWNER", "DRIVER"));
 router.use(scopeOwnership); // Applies req.scopedQuery based on role (OWNER or DRIVER)
 
 // Owner only

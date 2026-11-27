@@ -15,6 +15,7 @@ const scopeOwnership = require("../middleware/scopeOwnership");
 const router = express.Router();
 
 router.use(authenticate);
+router.use(authorize("OWNER", "DRIVER"));
 router.use(scopeOwnership);
 
 // Owner only routes

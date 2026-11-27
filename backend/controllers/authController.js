@@ -1,5 +1,6 @@
 const User = require("../models/User");
 const Driver = require("../models/Driver");
+const AdminActivityLog = require("../models/AdminActivityLog");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -10,6 +11,7 @@ const {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  changePasswordSchema,
 } = require("../validators/authValidator");
 
 const generateTokens = (user) => {
@@ -73,15 +75,32 @@ exports.login = async (req, res, next) => {
     const user = await User.findOne({
       $or: [{ email: identifier }, { email: normalizedEmail }, { phone: identifier }],
     });
-    if (!user || !user.isActive) {
+    if (!user) {
       return res
         .status(401)
-        .json({ success: false, message: "Invalid credentials or inactive account" });
+        .json({ success: false, message: "Invalid credentials" });
+    }
+
+    if (!user.isActive || user.accountStatus === "SUSPENDED") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Account is suspended or inactive. Please contact platform support." });
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: "Invalid credentials" });
+    }
+
+    await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
+    if (user.role === "ADMIN") {
+      await AdminActivityLog.create({
+        adminId: user._id,
+        action: "ADMIN_LOGIN",
+        targetType: "ADMIN",
+        targetId: user._id,
+        targetLabel: user.email,
+      }).catch(() => {});
     }
 
     const { accessToken, refreshToken } = generateTokens(user);
@@ -96,7 +115,7 @@ exports.login = async (req, res, next) => {
       success: true,
       data: {
         accessToken,
-        user: { _id: user._id, name: user.name, email: user.email, role: user.role },
+        user: { _id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role },
       },
     });
   } catch (error) {
@@ -186,8 +205,8 @@ exports.refresh = async (req, res, next) => {
       if (err) return res.status(403).json({ success: false, message: "Invalid refresh token" });
 
       const user = await User.findById(decoded._id);
-      if (!user || !user.isActive)
-        return res.status(401).json({ success: false, message: "User not found or inactive" });
+      if (!user || !user.isActive || user.accountStatus === "SUSPENDED")
+        return res.status(401).json({ success: false, message: "User not found or suspended" });
 
       const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
 
@@ -204,9 +223,70 @@ exports.refresh = async (req, res, next) => {
   }
 };
 
-exports.logout = (req, res) => {
+exports.logout = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+    const refreshToken = req.cookies?.refreshToken;
+    let adminId = null;
+
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_ACCESS_SECRET);
+        if (decoded?.role === "ADMIN") adminId = decoded._id;
+      } catch (_) {}
+    } else if (refreshToken) {
+      try {
+        const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
+        if (decoded?.role === "ADMIN") adminId = decoded._id;
+      } catch (_) {}
+    }
+
+    if (adminId) {
+      await AdminActivityLog.create({
+        adminId,
+        action: "ADMIN_LOGOUT",
+        targetType: "ADMIN",
+        targetId: adminId,
+      }).catch(() => {});
+    }
+  } catch (_) {}
+
   res.clearCookie("refreshToken");
   res.json({ success: true, message: "Logged out successfully" });
+};
+
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: "Current password is incorrect" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.passwordHash = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    if (user.role === "ADMIN") {
+      await AdminActivityLog.create({
+        adminId: user._id,
+        action: "ADMIN_PASSWORD_CHANGED",
+        targetType: "ADMIN",
+        targetId: user._id,
+        targetLabel: user.email,
+      }).catch(() => {});
+    }
+
+    res.json({ success: true, message: "Password updated successfully" });
+  } catch (error) {
+    next(error);
+  }
 };
 
 exports.getMe = async (req, res, next) => {

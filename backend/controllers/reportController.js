@@ -230,7 +230,11 @@ exports.getAnalytics = async (req, res, next) => {
         populate: { path: "userId", select: "name" },
       })
       .populate("truckId", "registrationNumber")
-      .populate("driverId", "userId licenseNumber");
+      .populate({
+        path: "driverId",
+        select: "licenseNumber userId",
+        populate: { path: "userId", select: "name" },
+      });
       
     const tripIds = trips.map(t => t._id);
 

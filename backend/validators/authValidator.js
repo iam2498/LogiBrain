@@ -69,9 +69,19 @@ const resetPasswordSchema = z.object({
     .min(8, "Password must be at least 8 characters"),
 });
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z
+    .string()
+    .min(1, "New password cannot be empty")
+    .min(8, "New password must be at least 8 characters")
+    .refine((val) => val.trim().length > 0, "Password cannot be only spaces"),
+});
+
 module.exports = {
   registerOwnerSchema,
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  changePasswordSchema,
 };

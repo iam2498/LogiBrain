@@ -7,6 +7,7 @@ const {
   getMe,
   forgotPassword,
   resetPassword,
+  changePassword,
 } = require("../controllers/authController");
 const authenticate = require("../middleware/authenticate");
 const rateLimit = require("express-rate-limit");
@@ -26,5 +27,6 @@ router.post("/reset-password", authLimiter, resetPassword);
 router.post("/refresh", refresh);
 router.post("/logout", logout);
 router.get("/me", authenticate, getMe);
+router.patch("/change-password", authenticate, changePassword);
 
 module.exports = router;

@@ -6,6 +6,7 @@ const {
   updateTruck,
   updateTruckStatus,
   getTruckHistory,
+  deleteTruck,
 } = require("../controllers/truckController");
 const authenticate = require("../middleware/authenticate");
 const authorize = require("../middleware/authorize");
@@ -22,5 +23,6 @@ router.get("/:id", getTruckById);
 router.put("/:id", updateTruck);
 router.patch("/:id/status", updateTruckStatus);
 router.get("/:id/history", getTruckHistory);
+router.delete("/:id", deleteTruck);
 
 module.exports = router;

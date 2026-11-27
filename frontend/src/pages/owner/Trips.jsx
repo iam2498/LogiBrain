@@ -1374,11 +1374,9 @@ export default function Trips() {
                                 <span className="font-medium truncate">
                                   {tripDrivers.length > 1
                                     ? `${tripDrivers.length} Drivers (${
-                                        tripDrivers[0]?.userId?.name || "..."
+                                        tripDrivers[0]?.userId?.name || "Unknown"
                                       } +${tripDrivers.length - 1})`
-                                    : tripDrivers[0]?.userId?.name ||
-                                      tripDrivers[0]?.licenseNumber ||
-                                      "Driver"}
+                                    : tripDrivers[0]?.userId?.name || "Unknown Driver"}
                                 </span>
                               </div>
                             </div>

@@ -128,14 +128,6 @@ export default function OwnerDashboard() {
               <span className="material-symbols-outlined text-[18px]">add</span>
               <span className="hidden sm:inline">New Dispatch</span>
             </Link>
-            <div className="w-px h-8 bg-outline-variant/30 mx-2 hidden sm:block"></div>
-            <button onClick={() => showInfo("Notifications feature coming soon")} className="p-2.5 text-on-surface-variant hover:bg-surface-container-low hover:text-secondary rounded-full transition-colors relative cursor-pointer">
-              <span className="material-symbols-outlined text-[22px]">notifications</span>
-              <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-surface border-red-500"></span>
-            </button>
-            <button onClick={() => showInfo("Settings feature coming soon")} className="p-2.5 text-on-surface-variant hover:bg-surface-container-low hover:text-secondary rounded-full transition-colors cursor-pointer">
-              <span className="material-symbols-outlined text-[22px]">settings</span>
-            </button>
           </div>
         </nav>
 
@@ -360,12 +352,12 @@ export default function OwnerDashboard() {
                           <div className="flex flex-col">
                             <span className="font-bold text-[14px] text-on-surface font-mono">
                               {trip.truckIds && trip.truckIds.length > 1
-                                ? trip.truckIds.map((t) => t.registrationNumber).join(", ")
+                                ? trip.truckIds.map((t) => t?.registrationNumber || "Removed Truck").join(", ")
                                 : trip.truckIds?.[0]?.registrationNumber || trip.truckId?.registrationNumber || "N/A"}
                             </span>
                             <span className="text-[13px] text-on-surface-variant">
                               {trip.driverIds && trip.driverIds.length > 1
-                                ? trip.driverIds.map((d) => d.userId?.name || d.licenseNumber).join(", ")
+                                ? trip.driverIds.map((d) => d?.userId?.name || "Unknown Driver").join(", ")
                                 : trip.driverIds?.[0]?.userId?.name || trip.driverId?.userId?.name || "Unknown Driver"}
                             </span>
                           </div>

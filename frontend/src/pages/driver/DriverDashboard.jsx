@@ -210,7 +210,7 @@ export default function DriverDashboard() {
               </div>
               <div className="bg-black/20 backdrop-blur-md rounded-xl p-3 md:p-4 border border-white/10 shadow-inner flex-1">
                 <p className="text-[11px] md:text-[12px] text-blue-200 uppercase tracking-wider font-bold mb-0.5 md:mb-1">Contact</p>
-                <p className="font-mono text-[14px] md:text-[16px] font-bold">{user.phone || user.email}</p>
+                <p className="font-mono text-[14px] md:text-[16px] font-bold">{profile?.phone || user?.phone || "Not Provided"}</p>
               </div>
             </div>
           </div>

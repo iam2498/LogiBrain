@@ -181,8 +181,8 @@ export default function Reports() {
 
   const filteredModalTrips = trips.filter(t => {
     const query = searchQuery.toLowerCase();
-    const truckRegs = (t.truckIds?.length ? t.truckIds.map(tr => tr.registrationNumber).join(' ') : (t.truckId?.registrationNumber || '')).toLowerCase();
-    const driverNames = (t.driverIds?.length ? t.driverIds.map(dr => dr.userId?.name || dr.licenseNumber).join(' ') : (t.driverId?.userId?.name || t.driverId?.licenseNumber || '')).toLowerCase();
+    const truckRegs = (t.truckIds?.length ? t.truckIds.map(tr => tr?.registrationNumber || '').join(' ') : (t.truckId?.registrationNumber || '')).toLowerCase();
+    const driverNames = (t.driverIds?.length ? t.driverIds.map(dr => dr?.userId?.name || dr?.licenseNumber || '').join(' ') : (t.driverId?.userId?.name || t.driverId?.licenseNumber || '')).toLowerCase();
     const source = t.source?.toLowerCase() || "";
     const dest = t.destination?.toLowerCase() || "";
     const tid = t._id.toLowerCase();
@@ -596,8 +596,9 @@ export default function Reports() {
                     <tbody className="divide-y divide-outline-variant/30 text-[13px]">
                       {completedTrips.filter(trip => {
                         const sq = mainSearchQuery.toLowerCase();
-                        const truckMatch = (trip.truckIds?.some(tr => tr.registrationNumber?.toLowerCase().includes(sq))) || trip.truckId?.registrationNumber?.toLowerCase().includes(sq);
-                        return trip.source?.toLowerCase().includes(sq) || trip.destination?.toLowerCase().includes(sq) || truckMatch;
+                        const truckMatch = (trip.truckIds?.some(tr => tr?.registrationNumber?.toLowerCase().includes(sq))) || trip.truckId?.registrationNumber?.toLowerCase().includes(sq);
+                        const driverMatch = (trip.driverIds?.some(dr => dr?.userId?.name?.toLowerCase().includes(sq))) || trip.driverId?.userId?.name?.toLowerCase().includes(sq);
+                        return trip.source?.toLowerCase().includes(sq) || trip.destination?.toLowerCase().includes(sq) || truckMatch || driverMatch;
                       }).length === 0 ? (
                         <tr>
                           <td colSpan="5" className="px-6 py-12 text-center text-on-surface-variant">
@@ -608,8 +609,9 @@ export default function Reports() {
                       ) : (
                         completedTrips.filter(trip => {
                           const sq = mainSearchQuery.toLowerCase();
-                          const truckMatch = (trip.truckIds?.some(tr => tr.registrationNumber?.toLowerCase().includes(sq))) || trip.truckId?.registrationNumber?.toLowerCase().includes(sq);
-                          return trip.source?.toLowerCase().includes(sq) || trip.destination?.toLowerCase().includes(sq) || truckMatch;
+                          const truckMatch = (trip.truckIds?.some(tr => tr?.registrationNumber?.toLowerCase().includes(sq))) || trip.truckId?.registrationNumber?.toLowerCase().includes(sq);
+                          const driverMatch = (trip.driverIds?.some(dr => dr?.userId?.name?.toLowerCase().includes(sq))) || trip.driverId?.userId?.name?.toLowerCase().includes(sq);
+                          return trip.source?.toLowerCase().includes(sq) || trip.destination?.toLowerCase().includes(sq) || truckMatch || driverMatch;
                         }).map((trip) => (
                           <tr key={trip._id} className="hover:bg-surface-container-lowest/50 transition-colors">
                             <td className="px-6 py-4">
@@ -617,7 +619,7 @@ export default function Reports() {
                               <div className="flex flex-wrap gap-1.5 mt-1">
                                 {(trip.truckIds && trip.truckIds.length > 0 ? trip.truckIds : trip.truckId ? [trip.truckId] : []).map((tr, idx) => {
                                   const dr = (trip.driverIds && trip.driverIds[idx]) || (idx === 0 ? trip.driverId : null);
-                                  const drName = dr?.userId?.name || dr?.licenseNumber;
+                                  const drName = dr?.userId?.name || (dr ? "Unknown Driver" : null);
                                   return (
                                     <span key={tr?._id || idx} className="inline-flex items-center gap-1 bg-surface-container-low px-2 py-0.5 rounded text-[11px] text-on-surface-variant border border-outline-variant/30">
                                       <span className="font-mono font-bold text-on-surface">{tr?.registrationNumber || "Unknown"}</span>
@@ -764,14 +766,14 @@ export default function Reports() {
                             <div className="flex items-center gap-1.5 bg-surface-container-low px-2 py-1 rounded-md text-[11px] font-medium text-on-surface">
                               <span className="material-symbols-outlined text-[14px] text-secondary">local_shipping</span>
                               {trip.truckIds && trip.truckIds.length > 0
-                                ? trip.truckIds.map(tr => tr.registrationNumber).join(', ')
+                                ? trip.truckIds.map(tr => tr?.registrationNumber || 'Removed').join(', ')
                                 : trip.truckId?.registrationNumber || 'Unknown'}
                             </div>
                             <div className="flex items-center gap-1.5 bg-surface-container-low px-2 py-1 rounded-md text-[11px] font-medium text-on-surface">
                               <span className="material-symbols-outlined text-[14px] text-primary">person</span>
                               {trip.driverIds && trip.driverIds.length > 0
-                                ? trip.driverIds.map(dr => dr.userId?.name || dr.licenseNumber).join(', ')
-                                : trip.driverId?.userId?.name || trip.driverId?.licenseNumber || 'Unknown'}
+                                ? trip.driverIds.map(dr => dr?.userId?.name || 'Unknown Driver').join(', ')
+                                : trip.driverId?.userId?.name || 'Unknown Driver'}
                             </div>
                           </div>
                         </div>

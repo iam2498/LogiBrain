@@ -12,6 +12,11 @@ const userSchema = new mongoose.Schema(
     gstNumber: { type: String }, // optional, OWNER only
     ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // only for DRIVER
     isActive: { type: Boolean, default: true },
+    accountStatus: { type: String, enum: ["ACTIVE", "SUSPENDED"], default: "ACTIVE" },
+    lastLoginAt: { type: Date },
+    suspendedAt: { type: Date },
+    suspensionReason: { type: String },
+    suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     resetPasswordOtp: { type: String },
     resetPasswordExpires: { type: Date },
   },

@@ -166,6 +166,29 @@ export default function Trucks() {
     setIsEditModalOpen(true);
   };
 
+  const handleDeleteTruck = async (truck) => {
+    if (!truck) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to remove truck ${truck.registrationNumber}? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await axiosClient.delete(`/trucks/${truck._id}`);
+      const remaining = trucks.filter((t) => t._id !== truck._id);
+      setTrucks(remaining);
+      setSelectedTruck((prev) =>
+        prev?._id === truck._id ? (remaining.length > 0 ? remaining[0] : null) : prev
+      );
+      showSuccess("Truck removed successfully!");
+    } catch (error) {
+      showError(error.response?.data?.message || "Failed to remove truck");
+    }
+  };
+
   useEffect(() => {
     const fetchTrucks = async () => {
       try {
@@ -439,7 +462,7 @@ export default function Trucks() {
                                 <button onClick={() => { setIsDropdownOpen(false); showInfo("Maintenance scheduling coming soon"); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-amber-600 hover:bg-amber-50 flex items-center gap-2">
                                   <span className="material-symbols-outlined text-[18px]">build</span> Maintenance
                                 </button>
-                                <button onClick={() => { setIsDropdownOpen(false); showInfo("Remove truck feature coming soon"); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
+                                <button onClick={() => { setIsDropdownOpen(false); handleDeleteTruck(selectedTruck); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
                                   <span className="material-symbols-outlined text-[18px]">delete</span> Remove Truck
                                 </button>
                               </div>
@@ -806,7 +829,7 @@ export default function Trucks() {
                         <div className="flex items-center gap-2 text-on-surface-variant">
                           <span className="material-symbols-outlined text-[16px]">person</span>
                           {trip.driverIds && trip.driverIds.length > 0
-                            ? trip.driverIds.map(d => d.userId?.name || d.licenseNumber).join(', ')
+                            ? trip.driverIds.map(d => d?.userId?.name || 'Unknown Driver').join(', ')
                             : trip.driverId?.userId?.name || 'Unknown Driver'}
                         </div>
                         <div className="font-bold text-on-surface font-mono">

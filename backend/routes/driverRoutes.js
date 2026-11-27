@@ -5,6 +5,7 @@ const {
   getDriverById,
   updateDriver,
   updateDriverStatus,
+  deleteDriver,
 } = require("../controllers/driverController");
 const authenticate = require("../middleware/authenticate");
 const authorize = require("../middleware/authorize");
@@ -20,5 +21,6 @@ router.get("/", getDrivers);
 router.get("/:id", getDriverById);
 router.put("/:id", updateDriver);
 router.patch("/:id/status", updateDriverStatus);
+router.delete("/:id", deleteDriver);
 
 module.exports = router;

@@ -14,6 +14,7 @@ const upload = require("../services/uploadService");
 const router = express.Router();
 
 router.use(authenticate);
+router.use(authorize("OWNER", "DRIVER"));
 router.use(scopeOwnership);
 
 // Both Owner and Driver can create expenses and view them

@@ -7,19 +7,19 @@ LogiBrain is a full-stack MERN platform for transport businesses to manage multi
 ## ✨ Key Features
 
 ### 🔐 Authentication & Role-Based Portals
-- **JWT + HTTP-Only Refresh Cookies:** Secure authentication (`POST /api/auth/login`, `/refresh`, `/logout`, `/register-owner`) with Zod validation and `bcryptjs` password hashing.
+- **JWT + HTTP-Only Refresh Cookies:** Secure authentication (`POST /api/auth/login`, `/refresh`, `/logout`, `/register-owner`, `PATCH /api/auth/change-password`) with Zod validation, `bcryptjs` password hashing, `lastLoginAt` tracking, and live account-suspension enforcement in `authenticate` middleware.
 - **Email/Phone Login & OTP Password Reset:** Supports sign-in with email or 10-digit phone number, plus Nodemailer-backed 6-digit OTP reset (`/forgot-password`).
-- **3 Role Portals:**
-  - **Admin (`/admin/*`):** Platform-wide KPIs, user activation/deactivation, fleet owner directory, system-wide trip monitoring, and monthly financial trends.
-  - **Owner (`/owner/*`):** Real-time dashboard, fleet & driver management, multi-truck trip dispatch, full expense ledger (add/edit/delete), interactive financial analytics, and PDF trip reports.
-  - **Driver (`/driver/*`):** Live trip assignment card, assigned truck details, expense logging on active legs, per-driver trip end requests, and personal trip history.
+- **3 Role Portals (Strict Role & Data Isolation):**
+  - **Admin (`/admin/dashboard`):** Single-page **Platform Administration Dashboard** with strict data privacy (zero access to private owner trucks, drivers, trips, expenses, or financial reports). Includes Platform Overview, Owner Account Management (view basic account info, suspend with mandatory reason, reactivate without deleting fleet records), Support Request Management, Live System Monitoring, Admin Activity Logs, and Profile/Password Security.
+  - **Owner (`/owner/*`):** Real-time dashboard, fleet & driver management, multi-truck trip dispatch, full expense ledger (add/edit/delete), interactive financial analytics, and PDF trip reports (showing truck numbers and driver names).
+  - **Driver (`/driver/*`):** Live trip assignment card, assigned truck details, contact mobile number display, expense logging on active legs, per-driver trip end requests, and personal trip history.
 
 ### 🚚 Multi-Truck & Per-Driver Trip Lifecycle
 - **Unified Fleet & Crew Assignment:** Assign one or multiple trucks to a single trip, pair each truck with an individual driver, auto-fill default truck drivers, and validate combined truck capacity.
 - **Independent Per-Truck / Per-Driver Execution:**
   - Each driver logs expenses attributed directly to their own paired truck and driver profile.
   - When one driver finishes and requests trip end (`END_REQUESTED`), the trip remains `ON_TRIP` for remaining drivers until they finish too.
-  - Owners can accept individual truck end requests (`Accept End`) to release completed trucks/drivers early, or confirm final trip completion (`COMPLETED`) once all legs finish.
+  - Owners can accept individual truck end requests (`Accept End`) to release completed trucks/drivers early, and individual assignment status (`tripAssignmentHelper.js`) is checked across trip creation, trip editing (`updateTrip`), and truck/driver status endpoints so completed legs never block new assignments.
 - **Transactional Integrity:** Multi-document trip operations (dispatch, edits, completion, cancellation, deletion) run inside MongoDB ACID transactions on replica sets with automatic rollback compensation on standalone MongoDB instances.
 
 ### 💰 Real-Time Financials, Expenses & PDF Reports
@@ -46,22 +46,21 @@ LogiBrain is a full-stack MERN platform for transport businesses to manage multi
 LogiBrain_v2/
 ├── backend/
 │   ├── config/          # Environment and MongoDB connection config
-│   ├── controllers/     # Auth, Admin, Owner, Truck, Driver, Trip, Expense, Report handlers
-│   ├── middleware/      # JWT auth, role authorization, ownership scoping, error handling
-│   ├── models/          # Mongoose schemas (User, Truck, Driver, Trip, Expense, TripReport)
-│   ├── routes/          # Express route definitions (/api/auth, /trucks, /drivers, /trips, /expenses, /reports, /admin)
+│   ├── controllers/     # Auth, Admin, Support, Truck, Driver, Trip, Expense, Report handlers
+│   ├── middleware/      # JWT & active-account auth, role authorization, ownership scoping, error handling
+│   ├── models/          # Mongoose schemas (User, Truck, Driver, Trip, Expense, TripReport, SupportRequest, AdminActivityLog)
+│   ├── routes/          # Express routes (/api/auth, /trucks, /drivers, /trips, /expenses, /reports, /admin, /support)
 │   ├── seed/            # Database seeders (seedAdmin.js, seedData.js)
 │   ├── services/        # Email (Nodemailer), file uploads (Multer), TripReport aggregation
-│   ├── utils/           # Transaction helper, PDF builder & Handlebars template, validators
+│   ├── utils/           # Transaction helper, assignment query helper, system metrics, PDF builder & template, validators
 │   ├── validators/      # Zod request validation schemas
 │   ├── app.js           # Express app setup
 │   └── server.js        # Server entrypoint
 ├── frontend/
 │   └── src/
 │       ├── api/         # Axios client with token refresh interceptor
-│       ├── components/  # Shared layout components (AdminLayout)
 │       ├── context/     # AuthContext, ToastContext
-│       ├── pages/       # auth/, admin/, owner/, driver/ views
+│       ├── pages/       # auth/, admin/ (single-page dashboard), owner/, driver/ views
 │       ├── routes/      # AppRoutes & ProtectedRoute role guards
 │       └── utils/       # Vehicle & license formatting/validation helpers
 └── QA_AUDIT/            # QA discovery, API, database, and financial audit reports
@@ -140,10 +139,11 @@ Open **http://localhost:5173** in your browser.
 
 | Base Path | Purpose |
 |---|---|
-| `/api/auth` | Owner registration, login, token refresh, logout, password reset, current profile |
+| `/api/auth` | Owner registration, login, token refresh, logout, password reset/change, current profile |
 | `/api/trucks` | Fleet vehicle CRUD, manual status updates, truck trip/expense history |
 | `/api/drivers` | Driver profile creation, updates, availability status |
 | `/api/trips` | Multi-truck trip dispatch, updates, per-driver end requests, owner confirmation, cancellation, history |
 | `/api/expenses` | Trip expense creation (with optional receipt upload), listing, editing, deletion |
 | `/api/reports` | Dashboard KPIs, overall/analytics reports, per-truck/driver/trip reports, PDF generation |
-| `/api/admin` | Admin stats, user activation toggles, owner directory, platform-wide trips & trends |
+| `/api/support` | Owner-scoped support request creation and ticket status tracking |
+| `/api/admin` | Platform overview, owner account listing/status management (suspend/reactivate), support handling, live system health, and admin activity logs |

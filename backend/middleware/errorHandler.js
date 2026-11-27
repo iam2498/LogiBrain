@@ -1,3 +1,5 @@
+const { recordApplicationError } = require("../utils/systemMetrics");
+
 const errorHandler = (err, req, res, next) => {
   console.error(err.stack);
 
@@ -8,6 +10,10 @@ const errorHandler = (err, req, res, next) => {
     statusCode = 400;
     const errorsList = err.issues || err.errors || [];
     message = errorsList.map(e => e.message).join(", ") || "Validation Error";
+  }
+
+  if (statusCode >= 500) {
+    recordApplicationError();
   }
 
   res.status(statusCode).json({

@@ -1,160 +1,94 @@
 const User = require("../models/User");
-const Driver = require("../models/Driver");
-const Truck = require("../models/Truck");
-const Trip = require("../models/Trip");
-const Expense = require("../models/Expense");
-const mongoose = require("mongoose");
+const SupportRequest = require("../models/SupportRequest");
+const AdminActivityLog = require("../models/AdminActivityLog");
+const { getSystemHealth } = require("../utils/systemMetrics");
+const {
+  ownerStatusActionSchema,
+  updateSupportRequestSchema,
+} = require("../validators/adminValidator");
 
-// 1. Get High-Level Dashboard Statistics
-exports.getAdminDashboardStats = async (req, res, next) => {
+const OWNER_PUBLIC_PROJECTION =
+  "_id name email isActive accountStatus createdAt updatedAt lastLoginAt suspendedAt suspensionReason suspendedBy";
+
+function resolveOwnerAccountStatus(ownerDoc) {
+  if (!ownerDoc) return "SUSPENDED";
+  if (ownerDoc.accountStatus === "SUSPENDED" || ownerDoc.isActive === false) {
+    return "SUSPENDED";
+  }
+  return "ACTIVE";
+}
+
+function serializeOwnerAccount(ownerDoc) {
+  const plain = ownerDoc.toObject ? ownerDoc.toObject() : { ...ownerDoc };
+  return {
+    _id: plain._id,
+    name: plain.name,
+    email: plain.email,
+    accountStatus: resolveOwnerAccountStatus(plain),
+    isActive: resolveOwnerAccountStatus(plain) === "ACTIVE",
+    createdAt: plain.createdAt,
+    lastLoginAt: plain.lastLoginAt || null,
+    suspendedAt: plain.suspendedAt || null,
+    suspensionReason: plain.suspensionReason || null,
+    suspendedBy: plain.suspendedBy || null,
+  };
+}
+
+// 1. Platform Dashboard Overview (Strictly platform-level; zero private business data)
+exports.getPlatformOverview = async (req, res, next) => {
   try {
+    const activeFilter = {
+      role: "OWNER",
+      isActive: true,
+      accountStatus: { $ne: "SUSPENDED" },
+    };
+    const suspendedFilter = {
+      role: "OWNER",
+      $or: [{ isActive: false }, { accountStatus: "SUSPENDED" }],
+    };
+
     const [
       totalOwners,
-      totalDrivers,
-      totalTrucks,
-      totalTrips,
-      activeTrips,
-      completedTrips,
-      cancelledTrips,
-      financialAgg,
-      expenseAgg,
-      recentUsers,
-      recentTrips,
+      activeOwners,
+      suspendedOwners,
+      pendingSupportRequests,
+      recentOwnersDocs,
+      recentActivities,
     ] = await Promise.all([
       User.countDocuments({ role: "OWNER" }),
-      User.countDocuments({ role: "DRIVER" }),
-      Truck.countDocuments(),
-      Trip.countDocuments(),
-      Trip.countDocuments({ status: "ON_TRIP" }),
-      Trip.countDocuments({ status: "COMPLETED" }),
-      Trip.countDocuments({ status: "CANCELLED" }),
-      Trip.aggregate([
-        {
-          $group: {
-            _id: null,
-            totalExpectedRevenue: { $sum: "$expectedRevenue" },
-            totalActualRevenue: { $sum: { $ifNull: ["$actualRevenue", "$expectedRevenue"] } },
-          },
-        },
-      ]),
-      Expense.aggregate([
-        {
-          $group: {
-            _id: null,
-            totalExpenses: { $sum: "$amount" },
-          },
-        },
-      ]),
-      User.find()
+      User.countDocuments(activeFilter),
+      User.countDocuments(suspendedFilter),
+      SupportRequest.countDocuments({ status: "PENDING" }),
+      User.find({ role: "OWNER" })
         .sort({ createdAt: -1 })
-        .limit(6)
-        .select("-passwordHash")
-        .populate("ownerId", "name businessName"),
-      Trip.find()
-        .sort({ createdAt: -1 })
-        .limit(6)
-        .populate("ownerId", "name businessName")
-        .populate("truckIds truckId", "registrationNumber")
-        .populate({
-          path: "driverIds driverId",
-          populate: { path: "userId", select: "name phone" },
-        }),
-    ]);
-
-    const totalRevenue = financialAgg[0]?.totalActualRevenue || 0;
-    const totalExpenses = expenseAgg[0]?.totalExpenses || 0;
-    const netProfit = totalRevenue - totalExpenses;
-
-    res.json({
-      success: true,
-      data: {
-        counts: {
-          totalOwners,
-          totalDrivers,
-          totalTrucks,
-          totalTrips,
-          activeTrips,
-          completedTrips,
-          cancelledTrips,
-        },
-        financials: {
-          totalRevenue,
-          totalExpectedRevenue: financialAgg[0]?.totalExpectedRevenue || 0,
-          totalExpenses,
-          netProfit,
-        },
-        recentUsers,
-        recentTrips,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// 2. Get All Users with Filtering and Pagination
-exports.getAllUsers = async (req, res, next) => {
-  try {
-    const { search, role, status, page = 1, limit = 20 } = req.query;
-    const query = {};
-
-    if (role && role !== "ALL") {
-      query.role = role.toUpperCase();
-    }
-
-    if (status && status !== "ALL") {
-      query.isActive = status === "ACTIVE";
-    }
-
-    if (search) {
-      const searchRegex = new RegExp(search.trim(), "i");
-      query.$or = [
-        { name: searchRegex },
-        { email: searchRegex },
-        { phone: searchRegex },
-        { businessName: searchRegex },
-      ];
-    }
-
-    const skip = (Number(page) - 1) * Number(limit);
-    const [users, total] = await Promise.all([
-      User.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit))
-        .select("-passwordHash")
-        .populate("ownerId", "name businessName email")
+        .limit(5)
+        .select(OWNER_PUBLIC_PROJECTION)
         .lean(),
-      User.countDocuments(query),
+      AdminActivityLog.find()
+        .sort({ createdAt: -1 })
+        .limit(8)
+        .populate("adminId", "name email")
+        .lean(),
     ]);
 
-    // Enhance users with related entity counts
-    const enhancedUsers = await Promise.all(
-      users.map(async (u) => {
-        if (u.role === "OWNER") {
-          const [truckCount, driverCount, tripCount] = await Promise.all([
-            Truck.countDocuments({ ownerId: u._id }),
-            Driver.countDocuments({ ownerId: u._id }),
-            Trip.countDocuments({ ownerId: u._id }),
-          ]);
-          return { ...u, truckCount, driverCount, tripCount };
-        } else if (u.role === "DRIVER") {
-          const driverProfile = await Driver.findOne({ userId: u._id }).lean();
-          return { ...u, driverProfile };
-        }
-        return u;
-      })
-    );
+    const health = getSystemHealth();
 
     res.json({
       success: true,
       data: {
-        users: enhancedUsers,
-        pagination: {
-          total,
-          page: Number(page),
-          limit: Number(limit),
-          pages: Math.ceil(total / Number(limit)),
+        summary: {
+          totalOwners,
+          activeOwners,
+          suspendedOwners,
+          pendingSupportRequests,
+        },
+        recentOwners: recentOwnersDocs.map(serializeOwnerAccount),
+        recentActivities,
+        systemStatus: {
+          apiStatus: health.apiStatus,
+          databaseStatus: health.databaseStatus,
+          uptimeSeconds: health.uptimeSeconds,
+          errorCount: health.errorCount,
         },
       },
     });
@@ -163,113 +97,53 @@ exports.getAllUsers = async (req, res, next) => {
   }
 };
 
-// 3. Toggle User Active Status
-exports.toggleUserStatus = async (req, res, next) => {
+// 2. Owner Account Listing (Search, Status Filter, Pagination)
+exports.getOwners = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const { isActive } = req.body;
+    const { search = "", status = "ALL", page = 1, limit = 10 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 10));
+    const skip = (pageNum - 1) * limitNum;
 
-    if (String(req.user._id) === id) {
-      return res.status(400).json({
-        success: false,
-        message: "You cannot deactivate your own admin account",
-      });
-    }
-
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
-
-    user.isActive = typeof isActive === "boolean" ? isActive : !user.isActive;
-    await user.save();
-
-    res.json({
-      success: true,
-      message: `User ${user.name} has been ${user.isActive ? "activated" : "deactivated"}`,
-      data: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        isActive: user.isActive,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// 4. Get Fleet Owners Directory
-exports.getAllOwners = async (req, res, next) => {
-  try {
-    const { search, page = 1, limit = 20 } = req.query;
     const query = { role: "OWNER" };
+    const andFilters = [];
 
-    if (search) {
-      const searchRegex = new RegExp(search.trim(), "i");
-      query.$or = [
-        { name: searchRegex },
-        { email: searchRegex },
-        { phone: searchRegex },
-        { businessName: searchRegex },
-      ];
+    if (status === "ACTIVE") {
+      andFilters.push({ isActive: true, accountStatus: { $ne: "SUSPENDED" } });
+    } else if (status === "SUSPENDED") {
+      andFilters.push({ $or: [{ isActive: false }, { accountStatus: "SUSPENDED" }] });
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    if (search && search.trim()) {
+      const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchRegex = new RegExp(escaped, "i");
+      andFilters.push({ $or: [{ name: searchRegex }, { email: searchRegex }] });
+    }
+
+    if (andFilters.length > 0) {
+      query.$and = andFilters;
+    }
+
     const [owners, total] = await Promise.all([
       User.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit))
-        .select("-passwordHash")
+        .limit(limitNum)
+        .select(OWNER_PUBLIC_PROJECTION)
+        .populate("suspendedBy", "name email")
         .lean(),
       User.countDocuments(query),
     ]);
 
-    // Aggregate fleet stats for each owner
-    const ownersWithStats = await Promise.all(
-      owners.map(async (owner) => {
-        const [truckCount, driverCount, activeTripsCount, completedTripsCount, revenueAgg] =
-          await Promise.all([
-            Truck.countDocuments({ ownerId: owner._id }),
-            Driver.countDocuments({ ownerId: owner._id }),
-            Trip.countDocuments({ ownerId: owner._id, status: "ON_TRIP" }),
-            Trip.countDocuments({ ownerId: owner._id, status: "COMPLETED" }),
-            Trip.aggregate([
-              { $match: { ownerId: owner._id } },
-              {
-                $group: {
-                  _id: null,
-                  totalRevenue: { $sum: { $ifNull: ["$actualRevenue", "$expectedRevenue"] } },
-                },
-              },
-            ]),
-          ]);
-
-        return {
-          ...owner,
-          stats: {
-            truckCount,
-            driverCount,
-            activeTripsCount,
-            completedTripsCount,
-            totalTrips: activeTripsCount + completedTripsCount,
-            totalRevenue: revenueAgg[0]?.totalRevenue || 0,
-          },
-        };
-      })
-    );
-
     res.json({
       success: true,
       data: {
-        owners: ownersWithStats,
+        owners: owners.map(serializeOwnerAccount),
         pagination: {
           total,
-          page: Number(page),
-          limit: Number(limit),
-          pages: Math.ceil(total / Number(limit)),
+          page: pageNum,
+          limit: limitNum,
+          pages: Math.max(1, Math.ceil(total / limitNum)),
         },
       },
     });
@@ -278,133 +152,162 @@ exports.getAllOwners = async (req, res, next) => {
   }
 };
 
-// 5. Get Single Owner Fleet Details
-exports.getOwnerDetails = async (req, res, next) => {
+// 3. View Basic Owner Account Information Only
+exports.getOwnerAccountById = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const owner = await User.findOne({ _id: id, role: "OWNER" }).select("-passwordHash");
-    if (!owner) {
-      return res.status(404).json({ success: false, message: "Fleet owner not found" });
-    }
+    const owner = await User.findOne({ _id: req.params.id, role: "OWNER" })
+      .select(OWNER_PUBLIC_PROJECTION)
+      .populate("suspendedBy", "name email")
+      .lean();
 
-    const [trucks, drivers, recentTrips, expensesAgg] = await Promise.all([
-      Truck.find({ ownerId: id }).populate({
-        path: "currentDriverId",
-        populate: { path: "userId", select: "name phone" },
-      }),
-      Driver.find({ ownerId: id }).populate("userId", "name email phone isActive"),
-      Trip.find({ ownerId: id })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .populate("truckIds truckId", "registrationNumber")
-        .populate({
-          path: "driverIds driverId",
-          populate: { path: "userId", select: "name phone" },
-        }),
-      Expense.aggregate([
-        { $match: { ownerId: new mongoose.Types.ObjectId(id) } },
-        { $group: { _id: null, totalExpenses: { $sum: "$amount" } } },
-      ]),
-    ]);
+    if (!owner) {
+      return res.status(404).json({ success: false, message: "Owner account not found" });
+    }
 
     res.json({
       success: true,
-      data: {
-        owner,
-        trucks,
-        drivers,
-        recentTrips,
-        totalExpenses: expensesAgg[0]?.totalExpenses || 0,
-      },
+      data: serializeOwnerAccount(owner),
     });
   } catch (error) {
     next(error);
   }
 };
 
-// 6. Get All Trips System-Wide
-exports.getAllTrips = async (req, res, next) => {
+// 4. Activate / Suspend / Reactivate Owner Account (Never touches business data)
+exports.updateOwnerAccountStatus = async (req, res, next) => {
   try {
-    const { ownerId, status, search, startDate, endDate, page = 1, limit = 20 } = req.query;
-    const query = {};
+    const { action, reason } = ownerStatusActionSchema.parse(req.body);
+    const owner = await User.findOne({ _id: req.params.id, role: "OWNER" }).select(
+      OWNER_PUBLIC_PROJECTION
+    );
 
-    if (ownerId && ownerId !== "ALL") {
-      query.ownerId = ownerId;
+    if (!owner) {
+      return res.status(404).json({ success: false, message: "Owner account not found" });
     }
 
+    const currentStatus = resolveOwnerAccountStatus(owner);
+
+    if (action === "SUSPEND") {
+      if (currentStatus === "SUSPENDED") {
+        return res.status(400).json({
+          success: false,
+          message: "Owner account is already suspended",
+        });
+      }
+
+      owner.isActive = false;
+      owner.accountStatus = "SUSPENDED";
+      owner.suspendedAt = new Date();
+      owner.suspensionReason = reason.trim();
+      owner.suspendedBy = req.user._id;
+      await owner.save();
+
+      await AdminActivityLog.create({
+        adminId: req.user._id,
+        action: "OWNER_SUSPENDED",
+        targetType: "OWNER",
+        targetId: owner._id,
+        targetLabel: `${owner.name} (${owner.email})`,
+        reason: owner.suspensionReason,
+        metadata: { previousStatus: currentStatus, newStatus: "SUSPENDED" },
+      });
+
+      const populatedOwner = await User.findById(owner._id)
+        .select(OWNER_PUBLIC_PROJECTION)
+        .populate("suspendedBy", "name email")
+        .lean();
+
+      return res.json({
+        success: true,
+        message: `Owner account ${owner.name} has been suspended`,
+        data: serializeOwnerAccount(populatedOwner),
+      });
+    }
+
+    // ACTIVATE or REACTIVATE
+    if (currentStatus === "ACTIVE") {
+      return res.status(400).json({
+        success: false,
+        message: "Owner account is already active",
+      });
+    }
+
+    owner.isActive = true;
+    owner.accountStatus = "ACTIVE";
+    owner.suspendedAt = undefined;
+    owner.suspensionReason = undefined;
+    owner.suspendedBy = undefined;
+    await owner.save();
+
+    const logAction =
+      action === "REACTIVATE" || currentStatus === "SUSPENDED"
+        ? "OWNER_REACTIVATED"
+        : "OWNER_ACTIVATED";
+
+    await AdminActivityLog.create({
+      adminId: req.user._id,
+      action: logAction,
+      targetType: "OWNER",
+      targetId: owner._id,
+      targetLabel: `${owner.name} (${owner.email})`,
+      reason: reason?.trim() || undefined,
+      metadata: { previousStatus: currentStatus, newStatus: "ACTIVE" },
+    });
+
+    const populatedOwner = await User.findById(owner._id)
+      .select(OWNER_PUBLIC_PROJECTION)
+      .lean();
+
+    res.json({
+      success: true,
+      message: `Owner account ${owner.name} has been reactivated`,
+      data: serializeOwnerAccount(populatedOwner),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 5. List Support & Help Requests
+exports.getSupportRequests = async (req, res, next) => {
+  try {
+    const { status = "ALL", search = "", page = 1, limit = 10 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 10));
+    const skip = (pageNum - 1) * limitNum;
+
+    const query = {};
     if (status && status !== "ALL") {
       query.status = status;
     }
-
-    if (search) {
-      const searchRegex = new RegExp(search.trim(), "i");
-      query.$or = [
-        { source: searchRegex },
-        { destination: searchRegex },
-        { customer: searchRegex },
-        { material: searchRegex },
-      ];
+    if (search && search.trim()) {
+      const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchRegex = new RegExp(escaped, "i");
+      query.$or = [{ subject: searchRegex }, { message: searchRegex }];
     }
 
-    if (startDate || endDate) {
-      query.startDate = {};
-      if (startDate) query.startDate.$gte = new Date(startDate);
-      if (endDate) query.startDate.$lte = new Date(endDate);
-    }
-
-    const skip = (Number(page) - 1) * Number(limit);
-    const [trips, total] = await Promise.all([
-      Trip.find(query)
+    const [requests, total, pendingCount] = await Promise.all([
+      SupportRequest.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit))
-        .populate("ownerId", "name businessName email phone")
-        .populate("truckIds truckId", "registrationNumber truckType model capacity status")
-        .populate({
-          path: "driverIds driverId",
-          select: "licenseNumber status",
-          populate: { path: "userId", select: "name phone email" },
-        })
+        .limit(limitNum)
+        .populate("ownerId", "name email accountStatus isActive")
+        .populate("respondedBy", "name email")
         .lean(),
-      Trip.countDocuments(query),
+      SupportRequest.countDocuments(query),
+      SupportRequest.countDocuments({ status: "PENDING" }),
     ]);
-
-    // Attach expense summary to each trip
-    const tripIds = trips.map((t) => t._id);
-    const expensesPerTrip = await Expense.aggregate([
-      { $match: { tripId: { $in: tripIds } } },
-      { $group: { _id: "$tripId", totalExpense: { $sum: "$amount" }, expenseCount: { $sum: 1 } } },
-    ]);
-
-    const expenseMap = new Map();
-    expensesPerTrip.forEach((item) => {
-      expenseMap.set(String(item._id), {
-        totalExpense: item.totalExpense,
-        expenseCount: item.expenseCount,
-      });
-    });
-
-    const enhancedTrips = trips.map((t) => {
-      const exp = expenseMap.get(String(t._id)) || { totalExpense: 0, expenseCount: 0 };
-      const effectiveRevenue = t.actualRevenue != null ? t.actualRevenue : t.expectedRevenue;
-      const netProfit = effectiveRevenue - exp.totalExpense;
-      return {
-        ...t,
-        totalExpense: exp.totalExpense,
-        expenseCount: exp.expenseCount,
-        netProfit,
-      };
-    });
 
     res.json({
       success: true,
       data: {
-        trips: enhancedTrips,
+        requests,
+        pendingCount,
         pagination: {
           total,
-          page: Number(page),
-          limit: Number(limit),
-          pages: Math.ceil(total / Number(limit)),
+          page: pageNum,
+          limit: limitNum,
+          pages: Math.max(1, Math.ceil(total / limitNum)),
         },
       },
     });
@@ -413,138 +316,101 @@ exports.getAllTrips = async (req, res, next) => {
   }
 };
 
-// 7. Get Platform Aggregate Reports & Trends
-exports.getAdminReports = async (req, res, next) => {
+// 6. Update Support Request Status & Admin Response
+exports.updateSupportRequest = async (req, res, next) => {
   try {
-    // 1. Monthly Trends (Last 6 Months)
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-    sixMonthsAgo.setDate(1);
-    sixMonthsAgo.setHours(0, 0, 0, 0);
+    const { status, adminResponse } = updateSupportRequestSchema.parse(req.body);
+    const requestDoc = await SupportRequest.findById(req.params.id);
 
-    const [monthlyRevenue, monthlyExpenses, tripsByStatus, expensesByCategory, topOwners] =
-      await Promise.all([
-        Trip.aggregate([
-          { $match: { createdAt: { $gte: sixMonthsAgo } } },
-          {
-            $group: {
-              _id: {
-                year: { $year: "$createdAt" },
-                month: { $month: "$createdAt" },
-              },
-              tripCount: { $sum: 1 },
-              revenue: { $sum: { $ifNull: ["$actualRevenue", "$expectedRevenue"] } },
-            },
-          },
-          { $sort: { "_id.year": 1, "_id.month": 1 } },
-        ]),
-        Expense.aggregate([
-          { $match: { date: { $gte: sixMonthsAgo } } },
-          {
-            $group: {
-              _id: {
-                year: { $year: "$date" },
-                month: { $month: "$date" },
-              },
-              expenses: { $sum: "$amount" },
-            },
-          },
-          { $sort: { "_id.year": 1, "_id.month": 1 } },
-        ]),
-        Trip.aggregate([
-          {
-            $group: {
-              _id: "$status",
-              count: { $sum: 1 },
-            },
-          },
-        ]),
-        Expense.aggregate([
-          {
-            $group: {
-              _id: "$category",
-              totalAmount: { $sum: "$amount" },
-              count: { $sum: 1 },
-            },
-          },
-          { $sort: { totalAmount: -1 } },
-        ]),
-        Trip.aggregate([
-          {
-            $group: {
-              _id: "$ownerId",
-              totalTrips: { $sum: 1 },
-              completedTrips: {
-                $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] },
-              },
-              revenue: { $sum: { $ifNull: ["$actualRevenue", "$expectedRevenue"] } },
-            },
-          },
-          { $sort: { revenue: -1 } },
-          { $limit: 5 },
-          {
-            $lookup: {
-              from: "users",
-              localField: "_id",
-              foreignField: "_id",
-              as: "ownerDetails",
-            },
-          },
-          { $unwind: "$ownerDetails" },
-          {
-            $project: {
-              _id: 1,
-              name: "$ownerDetails.name",
-              businessName: "$ownerDetails.businessName",
-              email: "$ownerDetails.email",
-              totalTrips: 1,
-              completedTrips: 1,
-              revenue: 1,
-            },
-          },
-        ]),
-      ]);
-
-    // Format monthly trend data
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const trendMap = new Map();
-
-    for (let i = 0; i < 6; i++) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - (5 - i));
-      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
-      const label = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-      trendMap.set(key, { name: label, trips: 0, revenue: 0, expenses: 0, profit: 0 });
+    if (!requestDoc) {
+      return res.status(404).json({ success: false, message: "Support request not found" });
     }
 
-    monthlyRevenue.forEach((item) => {
-      const key = `${item._id.year}-${item._id.month}`;
-      if (trendMap.has(key)) {
-        const entry = trendMap.get(key);
-        entry.trips = item.tripCount;
-        entry.revenue = item.revenue;
-        entry.profit = entry.revenue - entry.expenses;
-      }
+    const previousStatus = requestDoc.status;
+    requestDoc.status = status;
+    if (adminResponse !== undefined) {
+      requestDoc.adminResponse = adminResponse;
+    }
+    requestDoc.respondedBy = req.user._id;
+    requestDoc.respondedAt = new Date();
+    if (status === "RESOLVED") {
+      requestDoc.resolvedAt = new Date();
+    } else if (previousStatus === "RESOLVED") {
+      requestDoc.resolvedAt = undefined;
+    }
+
+    await requestDoc.save();
+
+    await AdminActivityLog.create({
+      adminId: req.user._id,
+      action: "SUPPORT_REQUEST_UPDATED",
+      targetType: "SUPPORT_REQUEST",
+      targetId: requestDoc._id,
+      targetLabel: requestDoc.subject,
+      reason: `Status changed from ${previousStatus} to ${status}`,
+      metadata: { previousStatus, newStatus: status },
     });
 
-    monthlyExpenses.forEach((item) => {
-      const key = `${item._id.year}-${item._id.month}`;
-      if (trendMap.has(key)) {
-        const entry = trendMap.get(key);
-        entry.expenses = item.expenses;
-        entry.profit = entry.revenue - entry.expenses;
-      }
-    });
+    const updated = await SupportRequest.findById(requestDoc._id)
+      .populate("ownerId", "name email accountStatus isActive")
+      .populate("respondedBy", "name email")
+      .lean();
 
-    const monthlyTrends = Array.from(trendMap.values());
+    res.json({
+      success: true,
+      message: "Support request updated successfully",
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 7. System Health & Monitoring
+exports.getSystemMonitoring = async (req, res, next) => {
+  try {
+    res.json({
+      success: true,
+      data: getSystemHealth(),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 8. Admin Security & Activity Logs
+exports.getActivityLogs = async (req, res, next) => {
+  try {
+    const { action = "ALL", page = 1, limit = 15 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 15));
+    const skip = (pageNum - 1) * limitNum;
+
+    const query = {};
+    if (action && action !== "ALL") {
+      query.action = action;
+    }
+
+    const [logs, total] = await Promise.all([
+      AdminActivityLog.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .populate("adminId", "name email")
+        .lean(),
+      AdminActivityLog.countDocuments(query),
+    ]);
 
     res.json({
       success: true,
       data: {
-        monthlyTrends,
-        tripsByStatus,
-        expensesByCategory,
-        topOwners,
+        logs,
+        pagination: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          pages: Math.max(1, Math.ceil(total / limitNum)),
+        },
       },
     });
   } catch (error) {
