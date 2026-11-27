@@ -10,7 +10,7 @@ LogiBrain is a full-stack MERN platform for transport businesses to manage multi
 - **JWT + HTTP-Only Refresh Cookies:** Secure authentication (`POST /api/auth/login`, `/refresh`, `/logout`, `/register-owner`, `PATCH /api/auth/change-password`) with Zod validation, `bcryptjs` password hashing, `lastLoginAt` tracking, and live account-suspension enforcement in `authenticate` middleware.
 - **Email/Phone Login & OTP Password Reset:** Supports sign-in with email or 10-digit phone number, plus Nodemailer-backed 6-digit OTP reset (`/forgot-password`).
 - **3 Role Portals (Strict Role & Data Isolation):**
-  - **Admin (`/admin/dashboard`):** Single-page **Platform Administration Dashboard** with strict data privacy (zero access to private owner trucks, drivers, trips, expenses, or financial reports). Includes Platform Overview, Owner Account Management (view basic account info, suspend with mandatory reason, reactivate without deleting fleet records), Support Request Management, Live System Monitoring, Admin Activity Logs, and Profile/Password Security.
+  - **Admin (`/admin/dashboard`):** Single-page **Platform Administration Dashboard** with strict data privacy (zero access to private owner trucks, drivers, trips, expenses, or financial reports). Includes Platform Overview with inline live System Monitoring, Owner Account Management (view basic account info, suspend with mandatory reason, reactivate without deleting fleet records), Admin Activity Logs, and Profile/Password Security.
   - **Owner (`/owner/*`):** Real-time dashboard, fleet & driver management, multi-truck trip dispatch, full expense ledger (add/edit/delete), interactive financial analytics, and PDF trip reports (showing truck numbers and driver names).
   - **Driver (`/driver/*`):** Live trip assignment card, assigned truck details, contact mobile number display, expense logging on active legs, per-driver trip end requests, and personal trip history.
 
@@ -46,10 +46,10 @@ LogiBrain is a full-stack MERN platform for transport businesses to manage multi
 LogiBrain_v2/
 ├── backend/
 │   ├── config/          # Environment and MongoDB connection config
-│   ├── controllers/     # Auth, Admin, Support, Truck, Driver, Trip, Expense, Report handlers
+│   ├── controllers/     # Auth, Admin, Truck, Driver, Trip, Expense, Report handlers
 │   ├── middleware/      # JWT & active-account auth, role authorization, ownership scoping, error handling
-│   ├── models/          # Mongoose schemas (User, Truck, Driver, Trip, Expense, TripReport, SupportRequest, AdminActivityLog)
-│   ├── routes/          # Express routes (/api/auth, /trucks, /drivers, /trips, /expenses, /reports, /admin, /support)
+│   ├── models/          # Mongoose schemas (User, Truck, Driver, Trip, Expense, TripReport, AdminActivityLog)
+│   ├── routes/          # Express routes (/api/auth, /trucks, /drivers, /trips, /expenses, /reports, /admin)
 │   ├── seed/            # Database seeders (seedAdmin.js, seedData.js)
 │   ├── services/        # Email (Nodemailer), file uploads (Multer), TripReport aggregation
 │   ├── utils/           # Transaction helper, assignment query helper, system metrics, PDF builder & template, validators
@@ -145,5 +145,4 @@ Open **http://localhost:5173** in your browser.
 | `/api/trips` | Multi-truck trip dispatch, updates, per-driver end requests, owner confirmation, cancellation, history |
 | `/api/expenses` | Trip expense creation (with optional receipt upload), listing, editing, deletion |
 | `/api/reports` | Dashboard KPIs, overall/analytics reports, per-truck/driver/trip reports, PDF generation |
-| `/api/support` | Owner-scoped support request creation and ticket status tracking |
-| `/api/admin` | Platform overview, owner account listing/status management (suspend/reactivate), support handling, live system health, and admin activity logs |
+| `/api/admin` | Platform overview (with live system monitoring), owner account listing/status management (suspend/reactivate), and admin activity logs |

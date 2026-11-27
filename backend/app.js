@@ -14,7 +14,6 @@ const tripRoutes = require("./routes/tripRoutes");
 const expenseRoutes = require("./routes/expenseRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const adminRoutes = require("./routes/adminRoutes");
-const supportRoutes = require("./routes/supportRoutes");
 
 const app = express();
 
@@ -37,7 +36,6 @@ app.use("/api/trips", tripRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api/support", supportRoutes);
 
 // Error Handling Middleware
 app.use(errorHandler);

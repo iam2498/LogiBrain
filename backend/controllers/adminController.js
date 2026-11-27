@@ -1,11 +1,7 @@
 const User = require("../models/User");
-const SupportRequest = require("../models/SupportRequest");
 const AdminActivityLog = require("../models/AdminActivityLog");
 const { getSystemHealth } = require("../utils/systemMetrics");
-const {
-  ownerStatusActionSchema,
-  updateSupportRequestSchema,
-} = require("../validators/adminValidator");
+const { ownerStatusActionSchema } = require("../validators/adminValidator");
 
 const OWNER_PUBLIC_PROJECTION =
   "_id name email isActive accountStatus createdAt updatedAt lastLoginAt suspendedAt suspensionReason suspendedBy";
@@ -34,7 +30,7 @@ function serializeOwnerAccount(ownerDoc) {
   };
 }
 
-// 1. Platform Dashboard Overview (Strictly platform-level; zero private business data)
+// 1. Platform Dashboard Overview (Strictly platform-level + live system health)
 exports.getPlatformOverview = async (req, res, next) => {
   try {
     const activeFilter = {
@@ -51,14 +47,12 @@ exports.getPlatformOverview = async (req, res, next) => {
       totalOwners,
       activeOwners,
       suspendedOwners,
-      pendingSupportRequests,
       recentOwnersDocs,
       recentActivities,
     ] = await Promise.all([
       User.countDocuments({ role: "OWNER" }),
       User.countDocuments(activeFilter),
       User.countDocuments(suspendedFilter),
-      SupportRequest.countDocuments({ status: "PENDING" }),
       User.find({ role: "OWNER" })
         .sort({ createdAt: -1 })
         .limit(5)
@@ -71,8 +65,6 @@ exports.getPlatformOverview = async (req, res, next) => {
         .lean(),
     ]);
 
-    const health = getSystemHealth();
-
     res.json({
       success: true,
       data: {
@@ -80,16 +72,10 @@ exports.getPlatformOverview = async (req, res, next) => {
           totalOwners,
           activeOwners,
           suspendedOwners,
-          pendingSupportRequests,
         },
         recentOwners: recentOwnersDocs.map(serializeOwnerAccount),
         recentActivities,
-        systemStatus: {
-          apiStatus: health.apiStatus,
-          databaseStatus: health.databaseStatus,
-          uptimeSeconds: health.uptimeSeconds,
-          errorCount: health.errorCount,
-        },
+        systemStatus: getSystemHealth(),
       },
     });
   } catch (error) {
@@ -268,117 +254,7 @@ exports.updateOwnerAccountStatus = async (req, res, next) => {
   }
 };
 
-// 5. List Support & Help Requests
-exports.getSupportRequests = async (req, res, next) => {
-  try {
-    const { status = "ALL", search = "", page = 1, limit = 10 } = req.query;
-    const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 10));
-    const skip = (pageNum - 1) * limitNum;
-
-    const query = {};
-    if (status && status !== "ALL") {
-      query.status = status;
-    }
-    if (search && search.trim()) {
-      const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const searchRegex = new RegExp(escaped, "i");
-      query.$or = [{ subject: searchRegex }, { message: searchRegex }];
-    }
-
-    const [requests, total, pendingCount] = await Promise.all([
-      SupportRequest.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum)
-        .populate("ownerId", "name email accountStatus isActive")
-        .populate("respondedBy", "name email")
-        .lean(),
-      SupportRequest.countDocuments(query),
-      SupportRequest.countDocuments({ status: "PENDING" }),
-    ]);
-
-    res.json({
-      success: true,
-      data: {
-        requests,
-        pendingCount,
-        pagination: {
-          total,
-          page: pageNum,
-          limit: limitNum,
-          pages: Math.max(1, Math.ceil(total / limitNum)),
-        },
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// 6. Update Support Request Status & Admin Response
-exports.updateSupportRequest = async (req, res, next) => {
-  try {
-    const { status, adminResponse } = updateSupportRequestSchema.parse(req.body);
-    const requestDoc = await SupportRequest.findById(req.params.id);
-
-    if (!requestDoc) {
-      return res.status(404).json({ success: false, message: "Support request not found" });
-    }
-
-    const previousStatus = requestDoc.status;
-    requestDoc.status = status;
-    if (adminResponse !== undefined) {
-      requestDoc.adminResponse = adminResponse;
-    }
-    requestDoc.respondedBy = req.user._id;
-    requestDoc.respondedAt = new Date();
-    if (status === "RESOLVED") {
-      requestDoc.resolvedAt = new Date();
-    } else if (previousStatus === "RESOLVED") {
-      requestDoc.resolvedAt = undefined;
-    }
-
-    await requestDoc.save();
-
-    await AdminActivityLog.create({
-      adminId: req.user._id,
-      action: "SUPPORT_REQUEST_UPDATED",
-      targetType: "SUPPORT_REQUEST",
-      targetId: requestDoc._id,
-      targetLabel: requestDoc.subject,
-      reason: `Status changed from ${previousStatus} to ${status}`,
-      metadata: { previousStatus, newStatus: status },
-    });
-
-    const updated = await SupportRequest.findById(requestDoc._id)
-      .populate("ownerId", "name email accountStatus isActive")
-      .populate("respondedBy", "name email")
-      .lean();
-
-    res.json({
-      success: true,
-      message: "Support request updated successfully",
-      data: updated,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// 7. System Health & Monitoring
-exports.getSystemMonitoring = async (req, res, next) => {
-  try {
-    res.json({
-      success: true,
-      data: getSystemHealth(),
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// 8. Admin Security & Activity Logs
+// 5. Admin Security & Activity Logs
 exports.getActivityLogs = async (req, res, next) => {
   try {
     const { action = "ALL", page = 1, limit = 15 } = req.query;

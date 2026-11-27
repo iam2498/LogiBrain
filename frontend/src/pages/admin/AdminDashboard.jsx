@@ -13,18 +13,6 @@ const ACTION_LABELS = {
   ADMIN_PASSWORD_CHANGED: { label: "Password Changed", cls: "bg-amber-500/10 text-amber-700 border-amber-500/20" },
 };
 
-const SUPPORT_STATUS_BADGE = {
-  PENDING: "bg-amber-500/10 text-amber-700 border-amber-500/25",
-  IN_PROGRESS: "bg-blue-500/10 text-blue-700 border-blue-500/25",
-  RESOLVED: "bg-emerald-500/10 text-emerald-700 border-emerald-500/25",
-};
-
-const PRIORITY_BADGE = {
-  LOW: "bg-slate-100 text-slate-700 border-slate-200",
-  MEDIUM: "bg-amber-50 text-amber-700 border-amber-200",
-  HIGH: "bg-red-50 text-red-700 border-red-200",
-};
-
 function formatDateTime(val) {
   if (!val) return "—";
   return new Date(val).toLocaleString("en-IN", {
@@ -66,7 +54,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Overview State
+  // Overview + Inline System Monitoring State
   const [overview, setOverview] = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(true);
 
@@ -78,25 +66,9 @@ export default function AdminDashboard() {
   const [ownerPage, setOwnerPage] = useState(1);
   const [ownerPagination, setOwnerPagination] = useState({ total: 0, page: 1, pages: 1, limit: 10 });
   const [selectedOwner, setSelectedOwner] = useState(null);
-  const [ownerActionModal, setOwnerActionModal] = useState(null); // { owner, action: 'SUSPEND' | 'REACTIVATE' | 'ACTIVATE' }
+  const [ownerActionModal, setOwnerActionModal] = useState(null);
   const [actionReason, setActionReason] = useState("");
   const [isOwnerSubmitting, setIsOwnerSubmitting] = useState(false);
-
-  // Support Requests State
-  const [supportRequests, setSupportRequests] = useState([]);
-  const [supportLoading, setSupportLoading] = useState(false);
-  const [supportSearch, setSupportSearch] = useState("");
-  const [supportStatusFilter, setSupportStatusFilter] = useState("ALL");
-  const [supportPage, setSupportPage] = useState(1);
-  const [supportPagination, setSupportPagination] = useState({ total: 0, page: 1, pages: 1, limit: 10 });
-  const [pendingSupportCount, setPendingSupportCount] = useState(0);
-  const [activeSupportModal, setActiveSupportModal] = useState(null);
-  const [supportForm, setSupportForm] = useState({ status: "PENDING", adminResponse: "" });
-  const [isSupportSubmitting, setIsSupportSubmitting] = useState(false);
-
-  // System Monitoring State
-  const [systemHealth, setSystemHealth] = useState(null);
-  const [healthLoading, setHealthLoading] = useState(false);
 
   // Activity Logs State
   const [logs, setLogs] = useState([]);
@@ -119,7 +91,6 @@ export default function AdminDashboard() {
     try {
       const res = await axiosClient.get("/admin/overview");
       setOverview(res.data.data);
-      setPendingSupportCount(res.data.data?.summary?.pendingSupportRequests || 0);
     } catch (err) {
       showError(err.response?.data?.message || "Failed to load platform overview");
     } finally {
@@ -145,38 +116,6 @@ export default function AdminDashboard() {
       setOwnersLoading(false);
     }
   }, [ownerPage, ownerStatusFilter, ownerSearch, showError]);
-
-  const fetchSupportRequests = useCallback(async () => {
-    setSupportLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(supportPage),
-        limit: "10",
-        status: supportStatusFilter,
-      });
-      if (supportSearch.trim()) params.append("search", supportSearch.trim());
-      const res = await axiosClient.get(`/admin/support-requests?${params.toString()}`);
-      setSupportRequests(res.data.data.requests || []);
-      setPendingSupportCount(res.data.data.pendingCount || 0);
-      setSupportPagination(res.data.data.pagination || { total: 0, page: 1, pages: 1, limit: 10 });
-    } catch (err) {
-      showError(err.response?.data?.message || "Failed to load support requests");
-    } finally {
-      setSupportLoading(false);
-    }
-  }, [supportPage, supportStatusFilter, supportSearch, showError]);
-
-  const fetchSystemHealth = useCallback(async () => {
-    setHealthLoading(true);
-    try {
-      const res = await axiosClient.get("/admin/system-health");
-      setSystemHealth(res.data.data);
-    } catch (err) {
-      showError(err.response?.data?.message || "Failed to load system health");
-    } finally {
-      setHealthLoading(false);
-    }
-  }, [showError]);
 
   const fetchActivityLogs = useCallback(async () => {
     setLogsLoading(true);
@@ -210,19 +149,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (activeTab === "overview") fetchOverview();
     if (activeTab === "owners") fetchOwners();
-    if (activeTab === "support") fetchSupportRequests();
-    if (activeTab === "monitoring") fetchSystemHealth();
     if (activeTab === "logs") fetchActivityLogs();
     if (activeTab === "settings") fetchProfile();
-  }, [
-    activeTab,
-    fetchOverview,
-    fetchOwners,
-    fetchSupportRequests,
-    fetchSystemHealth,
-    fetchActivityLogs,
-    fetchProfile,
-  ]);
+  }, [activeTab, fetchOverview, fetchOwners, fetchActivityLogs, fetchProfile]);
 
   const handleOpenOwnerDetails = async (ownerId) => {
     try {
@@ -268,34 +197,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleOpenSupportModal = (reqItem) => {
-    setActiveSupportModal(reqItem);
-    setSupportForm({
-      status: reqItem.status,
-      adminResponse: reqItem.adminResponse || "",
-    });
-  };
-
-  const handleSaveSupportUpdate = async (e) => {
-    e.preventDefault();
-    if (!activeSupportModal) return;
-
-    setIsSupportSubmitting(true);
-    try {
-      const res = await axiosClient.patch(`/admin/support-requests/${activeSupportModal._id}`, {
-        status: supportForm.status,
-        adminResponse: supportForm.adminResponse.trim(),
-      });
-      showSuccess(res.data.message || "Support request updated");
-      setActiveSupportModal(null);
-      await Promise.all([fetchSupportRequests(), fetchOverview()]);
-    } catch (err) {
-      showError(err.response?.data?.message || "Failed to update support request");
-    } finally {
-      setIsSupportSubmitting(false);
-    }
-  };
-
   const handleChangePassword = async (e) => {
     e.preventDefault();
     if (passwordForm.newPassword.length < 8) {
@@ -325,13 +226,6 @@ export default function AdminDashboard() {
   const navItems = [
     { id: "overview", label: "Dashboard", icon: "dashboard" },
     { id: "owners", label: "Owner Management", icon: "manage_accounts" },
-    {
-      id: "support",
-      label: "Support Requests",
-      icon: "support_agent",
-      badge: pendingSupportCount > 0 ? pendingSupportCount : null,
-    },
-    { id: "monitoring", label: "System Monitoring", icon: "monitor_heart" },
     { id: "logs", label: "Activity Logs", icon: "history" },
     { id: "settings", label: "Settings / Profile", icon: "admin_panel_settings" },
   ];
@@ -344,14 +238,6 @@ export default function AdminDashboard() {
     owners: {
       title: "Owner Management",
       subtitle: "Manage registered fleet owner accounts without accessing private business data",
-    },
-    support: {
-      title: "Support & Help Requests",
-      subtitle: "Review and respond to owner platform support tickets",
-    },
-    monitoring: {
-      title: "System Monitoring",
-      subtitle: "Live backend API, database connectivity, uptime, and error telemetry",
     },
     logs: {
       title: "Admin Activity Logs",
@@ -366,8 +252,6 @@ export default function AdminDashboard() {
   const handleRefreshCurrent = () => {
     if (activeTab === "overview") fetchOverview();
     if (activeTab === "owners") fetchOwners();
-    if (activeTab === "support") fetchSupportRequests();
-    if (activeTab === "monitoring") fetchSystemHealth();
     if (activeTab === "logs") fetchActivityLogs();
     if (activeTab === "settings") fetchProfile();
   };
@@ -376,8 +260,9 @@ export default function AdminDashboard() {
     totalOwners: 0,
     activeOwners: 0,
     suspendedOwners: 0,
-    pendingSupportRequests: 0,
   };
+
+  const sys = overview?.systemStatus || {};
 
   return (
     <div className="bg-background text-on-surface font-body-md antialiased min-h-screen flex overflow-x-hidden">
@@ -431,21 +316,14 @@ export default function AdminDashboard() {
                   setActiveTab(item.id);
                   setIsSidebarOpen(false);
                 }}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors text-[14px] font-medium cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-[14px] font-medium cursor-pointer ${
                   isActive
                     ? "bg-surface-container-highest/15 text-white border-l-4 border-secondary font-semibold"
                     : "text-on-primary-container hover:text-white hover:bg-surface-container-highest/10"
                 }`}
               >
-                <span className="flex items-center gap-3">
-                  <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-                  <span>{item.label}</span>
-                </span>
-                {item.badge ? (
-                  <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-400 text-slate-900">
-                    {item.badge}
-                  </span>
-                ) : null}
+                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                <span>{item.label}</span>
               </button>
             );
           })}
@@ -520,7 +398,7 @@ export default function AdminDashboard() {
           {/* ===================== A. DASHBOARD OVERVIEW ===================== */}
           {activeTab === "overview" && (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                 <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/40 shadow-xs">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[13px] font-medium text-on-surface-variant">
@@ -565,50 +443,51 @@ export default function AdminDashboard() {
                   </div>
                   <p className="text-[12px] text-on-surface-variant mt-1">Temporarily restricted</p>
                 </div>
-
-                <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/40 shadow-xs">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[13px] font-medium text-on-surface-variant">
-                      Pending Support Requests
-                    </span>
-                    <span className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                      <span className="material-symbols-outlined text-[22px]">support_agent</span>
-                    </span>
-                  </div>
-                  <div className="text-[30px] font-bold text-amber-600">
-                    {overviewLoading ? "..." : summary.pendingSupportRequests}
-                  </div>
-                  <p className="text-[12px] text-on-surface-variant mt-1">Awaiting admin review</p>
-                </div>
               </div>
 
-              {/* Basic System Status Bar */}
-              <div className="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/40 shadow-xs flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`w-3 h-3 rounded-full ${
-                      overview?.systemStatus?.apiStatus === "HEALTHY"
-                        ? "bg-emerald-500"
-                        : "bg-amber-500"
-                    }`}
-                  />
-                  <div>
-                    <p className="text-[14px] font-bold text-on-surface">
-                      System Status: {overview?.systemStatus?.apiStatus || "Checking..."}
+              {/* Inline System Monitoring Panel on Dashboard */}
+              <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/40 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`w-3 h-3 rounded-full ${
+                        sys.apiStatus === "HEALTHY" ? "bg-emerald-500" : "bg-amber-500"
+                      }`}
+                    />
+                    <div>
+                      <h2 className="text-[15px] font-bold text-on-surface">
+                        System Monitor: {overviewLoading ? "Checking..." : sys.apiStatus || "UNKNOWN"}
+                      </h2>
+                      <p className="text-[12px] text-on-surface-variant">
+                        Live backend API health, MongoDB status, and server uptime
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] text-on-surface-variant">
+                    Last checked: {formatDateTime(sys.checkedAt)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[13px]">
+                  <div className="p-3.5 rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
+                    <p className="text-[11px] text-on-surface-variant font-medium">API Status</p>
+                    <p className="font-bold text-on-surface mt-1">
+                      {overviewLoading ? "..." : sys.apiStatus || "—"}
                     </p>
-                    <p className="text-[12px] text-on-surface-variant">
-                      Database: {overview?.systemStatus?.databaseStatus || "—"} • Uptime:{" "}
-                      {formatUptime(overview?.systemStatus?.uptimeSeconds)}
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
+                    <p className="text-[11px] text-on-surface-variant font-medium">MongoDB</p>
+                    <p className="font-bold text-on-surface mt-1">
+                      {overviewLoading ? "..." : sys.databaseStatus || "—"}
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
+                    <p className="text-[11px] text-on-surface-variant font-medium">Server Uptime</p>
+                    <p className="font-bold font-mono text-on-surface mt-1">
+                      {overviewLoading ? "..." : formatUptime(sys.uptimeSeconds)}
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setActiveTab("monitoring")}
-                  className="text-[13px] font-semibold text-secondary hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  Open System Monitoring
-                  <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-                </button>
               </div>
 
               {/* Recent Owner Registrations & Recent Platform Activities */}
@@ -880,250 +759,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* ===================== C. SUPPORT & HELP REQUESTS ===================== */}
-          {activeTab === "support" && (
-            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-xs overflow-hidden">
-              <div className="p-5 border-b border-outline-variant/30 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-                <div className="relative flex-1 max-w-md">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[19px]">
-                    search
-                  </span>
-                  <input
-                    type="text"
-                    value={supportSearch}
-                    onChange={(e) => {
-                      setSupportSearch(e.target.value);
-                      setSupportPage(1);
-                    }}
-                    placeholder="Search support requests by subject or message..."
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-surface border border-outline-variant/50 text-[13px] outline-none focus:border-secondary"
-                  />
-                </div>
-
-                <select
-                  value={supportStatusFilter}
-                  onChange={(e) => {
-                    setSupportStatusFilter(e.target.value);
-                    setSupportPage(1);
-                  }}
-                  className="px-3.5 py-2.5 rounded-xl bg-surface border border-outline-variant/50 text-[13px] font-medium outline-none focus:border-secondary"
-                >
-                  <option value="ALL">All Statuses</option>
-                  <option value="PENDING">Pending</option>
-                  <option value="IN_PROGRESS">In Progress</option>
-                  <option value="RESOLVED">Resolved</option>
-                </select>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-[13px]">
-                  <thead className="bg-surface-container-low/60 text-on-surface-variant text-[11px] uppercase tracking-wider border-b border-outline-variant/30">
-                    <tr>
-                      <th className="py-3.5 px-5 font-semibold">Subject & Issue</th>
-                      <th className="py-3.5 px-5 font-semibold">Owner</th>
-                      <th className="py-3.5 px-5 font-semibold">Priority</th>
-                      <th className="py-3.5 px-5 font-semibold">Status</th>
-                      <th className="py-3.5 px-5 font-semibold">Submitted</th>
-                      <th className="py-3.5 px-5 font-semibold text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-outline-variant/20">
-                    {supportLoading ? (
-                      <tr>
-                        <td colSpan="6" className="py-12 text-center text-on-surface-variant">
-                          Loading support requests...
-                        </td>
-                      </tr>
-                    ) : supportRequests.length === 0 ? (
-                      <tr>
-                        <td colSpan="6" className="py-12 text-center text-on-surface-variant">
-                          No support requests found.
-                        </td>
-                      </tr>
-                    ) : (
-                      supportRequests.map((reqItem) => (
-                        <tr key={reqItem._id} className="hover:bg-surface-container-low/30">
-                          <td className="py-4 px-5 max-w-xs">
-                            <div className="font-semibold text-on-surface truncate">
-                              {reqItem.subject}
-                            </div>
-                            <div className="text-[12px] text-on-surface-variant truncate mt-0.5">
-                              {reqItem.message}
-                            </div>
-                          </td>
-                          <td className="py-4 px-5">
-                            <div className="font-medium text-on-surface">
-                              {reqItem.ownerId?.name || "Owner"}
-                            </div>
-                            <div className="text-[12px] text-on-surface-variant">
-                              {reqItem.ownerId?.email || "—"}
-                            </div>
-                          </td>
-                          <td className="py-4 px-5">
-                            <span
-                              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
-                                PRIORITY_BADGE[reqItem.priority] || PRIORITY_BADGE.MEDIUM
-                              }`}
-                            >
-                              {reqItem.priority}
-                            </span>
-                          </td>
-                          <td className="py-4 px-5">
-                            <span
-                              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                                SUPPORT_STATUS_BADGE[reqItem.status] || SUPPORT_STATUS_BADGE.PENDING
-                              }`}
-                            >
-                              {reqItem.status.replace("_", " ")}
-                            </span>
-                          </td>
-                          <td className="py-4 px-5 text-on-surface-variant whitespace-nowrap">
-                            {formatDateTime(reqItem.createdAt)}
-                          </td>
-                          <td className="py-4 px-5 text-right">
-                            <button
-                              onClick={() => handleOpenSupportModal(reqItem)}
-                              className="px-3 py-1.5 rounded-lg text-[12px] font-medium bg-secondary text-white hover:bg-secondary/90 cursor-pointer"
-                            >
-                              Review / Respond
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="px-5 py-4 border-t border-outline-variant/30 flex items-center justify-between text-[13px] text-on-surface-variant">
-                <span>
-                  Page {supportPagination.page} of {supportPagination.pages} ({supportPagination.total}{" "}
-                  requests)
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    disabled={supportPagination.page <= 1}
-                    onClick={() => setSupportPage((p) => Math.max(1, p - 1))}
-                    className="px-3 py-1.5 rounded-lg border border-outline-variant/40 disabled:opacity-40 cursor-pointer"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    disabled={supportPagination.page >= supportPagination.pages}
-                    onClick={() => setSupportPage((p) => p + 1)}
-                    className="px-3 py-1.5 rounded-lg border border-outline-variant/40 disabled:opacity-40 cursor-pointer"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ===================== D. SYSTEM MONITORING ===================== */}
-          {activeTab === "monitoring" && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/40 shadow-xs">
-                  <p className="text-[12px] font-semibold text-on-surface-variant uppercase">
-                    Backend API Status
-                  </p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <span
-                      className={`w-3 h-3 rounded-full ${
-                        systemHealth?.apiStatus === "HEALTHY" ? "bg-emerald-500" : "bg-red-500"
-                      }`}
-                    />
-                    <span className="text-[22px] font-bold text-on-surface">
-                      {healthLoading ? "..." : systemHealth?.apiStatus || "UNKNOWN"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/40 shadow-xs">
-                  <p className="text-[12px] font-semibold text-on-surface-variant uppercase">
-                    MongoDB Connection
-                  </p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <span
-                      className={`w-3 h-3 rounded-full ${
-                        systemHealth?.databaseStatus === "CONNECTED"
-                          ? "bg-emerald-500"
-                          : "bg-amber-500"
-                      }`}
-                    />
-                    <span className="text-[22px] font-bold text-on-surface">
-                      {healthLoading ? "..." : systemHealth?.databaseStatus || "UNKNOWN"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/40 shadow-xs">
-                  <p className="text-[12px] font-semibold text-on-surface-variant uppercase">
-                    Server Uptime
-                  </p>
-                  <div className="mt-3 text-[22px] font-bold font-mono text-on-surface">
-                    {healthLoading ? "..." : formatUptime(systemHealth?.uptimeSeconds)}
-                  </div>
-                </div>
-
-                <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/40 shadow-xs">
-                  <p className="text-[12px] font-semibold text-on-surface-variant uppercase">
-                    Application Errors
-                  </p>
-                  <div className="mt-3 text-[22px] font-bold font-mono text-on-surface">
-                    {healthLoading ? "..." : systemHealth?.errorCount ?? 0}
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/40 shadow-xs">
-                <h2 className="text-[16px] font-bold text-on-surface mb-4">
-                  Runtime & Request Telemetry
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-[13px]">
-                  <div className="p-4 rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
-                    <p className="text-on-surface-variant text-[12px]">Failed API Requests (4xx/5xx)</p>
-                    <p className="text-[18px] font-bold font-mono text-on-surface mt-1">
-                      {systemHealth?.failedRequestCount ?? 0}
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
-                    <p className="text-on-surface-variant text-[12px]">Total API Requests Observed</p>
-                    <p className="text-[18px] font-bold font-mono text-on-surface mt-1">
-                      {systemHealth?.totalRequestCount ?? 0}
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
-                    <p className="text-on-surface-variant text-[12px]">Memory Usage (RSS)</p>
-                    <p className="text-[18px] font-bold font-mono text-on-surface mt-1">
-                      {systemHealth?.memoryUsageMb ?? 0} MB
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
-                    <p className="text-on-surface-variant text-[12px]">Node.js Runtime</p>
-                    <p className="text-[15px] font-semibold font-mono text-on-surface mt-1">
-                      {systemHealth?.nodeVersion || "—"}
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
-                    <p className="text-on-surface-variant text-[12px]">Process Started At</p>
-                    <p className="text-[14px] font-medium text-on-surface mt-1">
-                      {formatDateTime(systemHealth?.startedAt)}
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
-                    <p className="text-on-surface-variant text-[12px]">Last Health Check</p>
-                    <p className="text-[14px] font-medium text-on-surface mt-1">
-                      {formatDateTime(systemHealth?.checkedAt)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ===================== E1. ACTIVITY LOGS ===================== */}
+          {/* ===================== C. ACTIVITY LOGS ===================== */}
           {activeTab === "logs" && (
             <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-xs overflow-hidden">
               <div className="p-5 border-b border-outline-variant/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -1132,7 +768,7 @@ export default function AdminDashboard() {
                     Administrative Activity History
                   </h2>
                   <p className="text-[12px] text-on-surface-variant">
-                    Immutable log of account status updates, support handling, and admin auth events
+                    Immutable log of account status updates and admin auth events
                   </p>
                 </div>
 
@@ -1148,7 +784,6 @@ export default function AdminDashboard() {
                   <option value="OWNER_SUSPENDED">Owner Suspended</option>
                   <option value="OWNER_REACTIVATED">Owner Reactivated</option>
                   <option value="OWNER_ACTIVATED">Owner Activated</option>
-                  <option value="SUPPORT_REQUEST_UPDATED">Support Updated</option>
                   <option value="ADMIN_LOGIN">Admin Login</option>
                   <option value="ADMIN_LOGOUT">Admin Logout</option>
                   <option value="ADMIN_PASSWORD_CHANGED">Password Changed</option>
@@ -1250,7 +885,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* ===================== E2. SETTINGS / PROFILE ===================== */}
+          {/* ===================== D. SETTINGS / PROFILE ===================== */}
           {activeTab === "settings" && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Admin Profile Card */}
@@ -1527,89 +1162,6 @@ export default function AdminDashboard() {
                     : ownerActionModal.action === "SUSPEND"
                     ? "Confirm Suspend"
                     : "Confirm Reactivate"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ===================== MODAL: SUPPORT REQUEST REVIEW ===================== */}
-      {activeSupportModal && (
-        <div className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-outline-variant/30 flex items-center justify-between">
-              <h3 className="text-[16px] font-bold text-on-surface">Support Request Details</h3>
-              <button
-                onClick={() => setActiveSupportModal(null)}
-                className="p-1 rounded-lg hover:bg-surface-container-low text-on-surface-variant cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[20px]">close</span>
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveSupportUpdate} className="p-6 space-y-4">
-              <div className="p-4 rounded-xl bg-surface-container-low/60 border border-outline-variant/30 space-y-2 text-[13px]">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-bold text-on-surface">{activeSupportModal.subject}</span>
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-white border border-outline-variant/40">
-                    {activeSupportModal.category}
-                  </span>
-                </div>
-                <p className="text-[12px] text-on-surface-variant">
-                  From: {activeSupportModal.ownerId?.name || "Owner"} (
-                  {activeSupportModal.ownerId?.email || "—"}) • Submitted{" "}
-                  {formatDateTime(activeSupportModal.createdAt)}
-                </p>
-                <p className="text-on-surface whitespace-pre-wrap pt-2 border-t border-outline-variant/30">
-                  {activeSupportModal.message}
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-[12px] font-semibold text-on-surface-variant mb-1">
-                  Request Status
-                </label>
-                <select
-                  value={supportForm.status}
-                  onChange={(e) => setSupportForm((f) => ({ ...f, status: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-outline-variant/50 text-[13px] font-medium outline-none focus:border-secondary"
-                >
-                  <option value="PENDING">Pending</option>
-                  <option value="IN_PROGRESS">In Progress</option>
-                  <option value="RESOLVED">Resolved</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[12px] font-semibold text-on-surface-variant mb-1">
-                  Admin Response
-                </label>
-                <textarea
-                  rows={4}
-                  value={supportForm.adminResponse}
-                  onChange={(e) =>
-                    setSupportForm((f) => ({ ...f, adminResponse: e.target.value }))
-                  }
-                  placeholder="Write your response to the fleet owner..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-surface border border-outline-variant/50 text-[13px] outline-none focus:border-secondary"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveSupportModal(null)}
-                  className="px-4 py-2 rounded-xl border border-outline-variant/50 text-[13px] font-medium cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSupportSubmitting}
-                  className="px-4 py-2 rounded-xl bg-secondary hover:bg-secondary/90 text-white text-[13px] font-semibold disabled:opacity-50 cursor-pointer"
-                >
-                  {isSupportSubmitting ? "Saving..." : "Save Update"}
                 </button>
               </div>
             </form>
