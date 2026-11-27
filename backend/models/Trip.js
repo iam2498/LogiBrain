@@ -3,8 +3,14 @@ const mongoose = require("mongoose");
 const tripSchema = new mongoose.Schema(
   {
     ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    truckId: { type: mongoose.Schema.Types.ObjectId, ref: "Truck", required: true },
-    driverId: { type: mongoose.Schema.Types.ObjectId, ref: "Driver", required: true },
+    truckIds: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Truck", required: true }
+    ],
+    driverIds: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Driver", required: true }
+    ],
+    truckId: { type: mongoose.Schema.Types.ObjectId, ref: "Truck" },
+    driverId: { type: mongoose.Schema.Types.ObjectId, ref: "Driver" },
     source: { type: String, required: true },
     destination: { type: String, required: true },
     customer: { type: String },
@@ -26,6 +32,8 @@ const tripSchema = new mongoose.Schema(
 );
 
 tripSchema.index({ ownerId: 1, status: 1 });
+tripSchema.index({ truckIds: 1 });
+tripSchema.index({ driverIds: 1 });
 tripSchema.index({ driverId: 1 });
 tripSchema.index({ truckId: 1 });
 

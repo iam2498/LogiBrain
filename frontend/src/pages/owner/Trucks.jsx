@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
+import { validateTruckRegistrationNumber } from "../../utils/vehicleValidator";
 
 export default function Trucks() {
   const { user, logout } = useAuth();
+  const { showSuccess, showError, showInfo } = useToast();
   const [trucks, setTrucks] = useState([]);
   const [selectedTruck, setSelectedTruck] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +32,17 @@ export default function Trucks() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+
+  // Real-time truck registration rule validation checks
+  const newTruckValidation = useMemo(() => {
+    if (!newTruckForm.registrationNumber) return null;
+    return validateTruckRegistrationNumber(newTruckForm.registrationNumber);
+  }, [newTruckForm.registrationNumber]);
+
+  const editTruckValidation = useMemo(() => {
+    if (!editTruckForm?.registrationNumber) return null;
+    return validateTruckRegistrationNumber(editTruckForm.registrationNumber);
+  }, [editTruckForm?.registrationNumber]);
 
   // Truck History State
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -69,6 +83,14 @@ export default function Trucks() {
 
   const handleUpdateTruck = async (e) => {
     e.preventDefault();
+    if (editTruckForm?.registrationNumber?.trim()) {
+      const check = validateTruckRegistrationNumber(editTruckForm.registrationNumber);
+      if (!check.isValid) {
+        showError(check.message);
+        return;
+      }
+    }
+
     setIsUpdating(true);
     try {
       const payload = { ...editTruckForm };
@@ -90,8 +112,10 @@ export default function Trucks() {
       setTrucks(trucks.map(t => t._id === selectedTruck._id ? updatedTruck : t));
       setSelectedTruck(updatedTruck);
       setIsEditModalOpen(false); // Close the edit modal
+      showSuccess("Truck updated successfully!");
     } catch (error) {
       console.error(error);
+      showError(error.response?.data?.message || "Failed to update truck");
     } finally {
       setIsUpdating(false);
     }
@@ -110,6 +134,17 @@ export default function Trucks() {
 
   const handleCreateTruck = async (e) => {
     e.preventDefault();
+    if (!newTruckForm.registrationNumber?.trim()) {
+      setSubmitError("Registration number is required");
+      return;
+    }
+    const check = validateTruckRegistrationNumber(newTruckForm.registrationNumber);
+    if (!check.isValid) {
+      setSubmitError(check.message);
+      showError(check.message);
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitError("");
     try {
@@ -118,6 +153,7 @@ export default function Trucks() {
       setIsAddModalOpen(false);
       setNewTruckForm({ registrationNumber: "", truckType: "", model: "", capacity: "" }); // reset
       if (!selectedTruck) setSelectedTruck(res.data.data);
+      showSuccess("Truck added successfully!");
     } catch (error) {
       setSubmitError(error.response?.data?.message || "Failed to add truck");
     } finally {
@@ -167,22 +203,22 @@ export default function Trucks() {
         </div>
 
         <nav className="flex-1 overflow-y-auto custom-scrollbar px-3 space-y-1">
-          <Link to="/owner/dashboard" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/dashboard" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">dashboard</span> Dashboard
           </Link>
-          <Link to="/owner/trips" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/trips" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px]">route</span> Trips
           </Link>
-          <Link to="/owner/trucks" className="flex items-center gap-3 px-4 py-3 text-secondary bg-surface-container-highest/10 rounded-lg hover:bg-surface-container-highest/20 transition-all font-medium text-[14px]">
+          <Link to="/owner/trucks" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-secondary bg-surface-container-highest/10 rounded-lg hover:bg-surface-container-highest/20 transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px] fill-icon">local_shipping</span> Trucks
           </Link>
-          <Link to="/owner/drivers" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/drivers" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px]">person</span> Drivers
           </Link>
-          <Link to="/owner/expenses" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/expenses" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px] fill-icon">payments</span> Expenses
           </Link>
-          <Link to="/owner/reports" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/reports" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px]">assessment</span> Reports
           </Link>
         </nav>
@@ -225,10 +261,10 @@ export default function Trucks() {
               </button>
             </div>
             <div className="h-6 w-px bg-outline-variant/50 hidden sm:block"></div>
-            <div className="hidden sm:flex items-center gap-3">
-              <button onClick={() => setIsAddModalOpen(true)} className="bg-[#0a0a0a] text-white px-4 py-2 rounded-lg font-label-md text-[13px] font-medium hover:bg-black transition-transform duration-200 active:scale-95 flex items-center gap-2 shadow-sm">
-                <span className="material-symbols-outlined text-[18px]">local_shipping</span>
-                Add Truck
+            <div className="flex items-center gap-2">
+              <button onClick={() => setIsAddModalOpen(true)} className="bg-[#0a0a0a] text-white px-3 sm:px-4 py-2 rounded-lg font-label-md text-[13px] font-medium hover:bg-black transition-transform duration-200 active:scale-95 flex items-center gap-1.5 shadow-sm">
+                <span className="material-symbols-outlined text-[18px]">add</span>
+                <span>Add Truck</span>
               </button>
             </div>
           </div>
@@ -355,9 +391,11 @@ export default function Trucks() {
                         </div>
 
                         <div className="mt-4 pt-3 border-t border-outline-variant/30 flex justify-between items-center text-[12px] text-on-surface-variant font-medium">
-                           <div className="flex items-center gap-1.5">
-                             <span className="material-symbols-outlined text-[14px]">person</span>
-                             {truck.currentDriverId?.userId?.name || 'No Driver'}
+                           <div className="flex items-center gap-1.5 truncate">
+                             <span className="material-symbols-outlined text-[14px] shrink-0">person</span>
+                             <span className="truncate">
+                               {truck.currentDriverId?.userId?.name || truck.currentDriverId?.name || 'No Driver'}
+                             </span>
                            </div>
                            <div className="flex items-center gap-1.5">
                              <span className="material-symbols-outlined text-[14px]">local_gas_station</span>
@@ -398,10 +436,10 @@ export default function Trucks() {
                                 <button onClick={() => { setIsDropdownOpen(false); handleOpenEditModal(selectedTruck); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-on-surface hover:bg-surface-container-low flex items-center gap-2">
                                   <span className="material-symbols-outlined text-[18px]">edit</span> Edit Profile
                                 </button>
-                                <button onClick={() => { setIsDropdownOpen(false); alert("Functionality mocked."); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-amber-600 hover:bg-amber-50 flex items-center gap-2">
+                                <button onClick={() => { setIsDropdownOpen(false); showInfo("Maintenance scheduling coming soon"); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-amber-600 hover:bg-amber-50 flex items-center gap-2">
                                   <span className="material-symbols-outlined text-[18px]">build</span> Maintenance
                                 </button>
-                                <button onClick={() => { setIsDropdownOpen(false); alert("Functionality mocked."); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
+                                <button onClick={() => { setIsDropdownOpen(false); showInfo("Remove truck feature coming soon"); }} className="w-full text-left px-4 py-2.5 text-[13px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2">
                                   <span className="material-symbols-outlined text-[18px]">delete</span> Remove Truck
                                 </button>
                               </div>
@@ -446,7 +484,23 @@ export default function Trucks() {
                           <div>
                             <h4 className="font-bold text-[11px] uppercase text-on-surface-variant mb-3 tracking-wider">Assignment Details</h4>
                             <div className="bg-surface-container-low p-3 rounded-lg border border-outline-variant/30 text-[13px] text-on-surface">
-                              <p className="mb-2"><span className="font-semibold text-on-surface-variant">Current Driver:</span> {selectedTruck.currentDriverId?.userId?.name || 'None Assigned'}</p>
+                              <p className="mb-2">
+                                <span className="font-semibold text-on-surface-variant">Current Driver:</span>{" "}
+                                <span className="font-medium text-on-surface">
+                                  {selectedTruck.currentDriverId?.userId?.name || selectedTruck.currentDriverId?.name || 'None Assigned'}
+                                </span>
+                                {selectedTruck.currentDriverId?.licenseNumber && (
+                                  <span className="text-[11px] text-on-surface-variant ml-1.5 font-mono">
+                                    (Lic: {selectedTruck.currentDriverId.licenseNumber})
+                                  </span>
+                                )}
+                              </p>
+                              {selectedTruck.activeTrip && (
+                                <p className="mb-2 text-[12px] text-secondary flex items-center gap-1 font-medium">
+                                  <span className="material-symbols-outlined text-[15px]">navigation</span>
+                                  <span>Live Trip: {selectedTruck.activeTrip.source} ➔ {selectedTruck.activeTrip.destination}</span>
+                                </p>
+                              )}
                               <p><span className="font-semibold text-on-surface-variant">Added On:</span> {new Date(selectedTruck.createdAt).toLocaleDateString()}</p>
                             </div>
                           </div>
@@ -475,19 +529,59 @@ export default function Trucks() {
     {/* Edit Truck Modal */}
     {isEditModalOpen && selectedTruck && editTruckForm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[450px] overflow-hidden">
-            <div className="px-6 py-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-lowest">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[450px] max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-lowest shrink-0">
               <h3 className="text-[18px] font-bold text-on-surface">Edit Truck Details</h3>
               <button onClick={() => setIsEditModalOpen(false)} className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low p-1.5 rounded-full transition-colors">
                 <span className="material-symbols-outlined text-[20px]">close</span>
               </button>
             </div>
             
-            <form onSubmit={handleUpdateTruck} className="p-6 space-y-4">
+            <form onSubmit={handleUpdateTruck} className="p-6 space-y-4 flex-1 overflow-y-auto">
               
               <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-on-surface-variant">Registration Number <span className="text-red-500">*</span></label>
-                <input required type="text" name="registrationNumber" value={editTruckForm.registrationNumber} onChange={handleUpdateTruckChange} className="w-full h-10 px-3 bg-surface-container-lowest border border-outline-variant/50 rounded-lg focus:border-secondary focus:ring-1 focus:ring-secondary outline-none transition-all text-[14px] text-on-surface uppercase font-mono" />
+                <div className="flex justify-between items-center">
+                  <label className="text-[13px] font-semibold text-on-surface-variant">Registration Number <span className="text-red-500">*</span></label>
+                  {editTruckValidation && (
+                    <span className={`text-[11px] font-semibold flex items-center gap-1 ${editTruckValidation.isValid ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      <span className="material-symbols-outlined text-[14px]">
+                        {editTruckValidation.isValid ? 'check_circle' : 'warning'}
+                      </span>
+                      {editTruckValidation.isValid ? 'Valid Format' : 'Rule Check'}
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input 
+                    required 
+                    type="text" 
+                    name="registrationNumber" 
+                    value={editTruckForm.registrationNumber} 
+                    onChange={handleUpdateTruckChange} 
+                    className={`w-full h-10 px-3 bg-surface-container-lowest border rounded-lg outline-none transition-all text-[14px] text-on-surface uppercase font-mono pr-8 ${
+                      editTruckValidation
+                        ? editTruckValidation.isValid
+                          ? 'border-emerald-500 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500'
+                          : 'border-amber-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-400'
+                        : 'border-outline-variant/50 focus:border-secondary focus:ring-1 focus:ring-secondary'
+                    }`} 
+                  />
+                  {editTruckValidation && (
+                    <span className={`material-symbols-outlined text-[18px] absolute right-2.5 top-2.5 pointer-events-none ${editTruckValidation.isValid ? 'text-emerald-500' : 'text-amber-500'}`}>
+                      {editTruckValidation.isValid ? 'check_circle' : 'info'}
+                    </span>
+                  )}
+                </div>
+                {editTruckValidation ? (
+                  <p className={`text-[11.5px] leading-tight flex items-start gap-1 font-medium ${editTruckValidation.isValid ? 'text-emerald-600' : 'text-amber-700'}`}>
+                    <span>{editTruckValidation.isValid ? '✓' : '•'}</span>
+                    <span>{editTruckValidation.message}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-on-surface-variant/70">
+                    Rule format: SS-RR-XX-NNNN (e.g. MH-12-AB-1234) or YY-BH-NNNN-XX
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -508,12 +602,36 @@ export default function Trucks() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-on-surface-variant">Assign Driver</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-[13px] font-semibold text-on-surface-variant">Assign Driver</label>
+                  {editTruckForm.currentDriverId && (
+                    <button
+                      type="button"
+                      onClick={() => setEditTruckForm((prev) => ({ ...prev, currentDriverId: "" }))}
+                      className="text-[11px] text-red-500 hover:text-red-700 hover:underline font-medium flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[13px]">close</span>
+                      Unselect Driver
+                    </button>
+                  )}
+                </div>
                 <select name="currentDriverId" value={editTruckForm.currentDriverId} onChange={handleUpdateTruckChange} className="w-full h-10 px-3 bg-surface-container-lowest border border-outline-variant/50 rounded-lg focus:border-secondary focus:ring-1 focus:ring-secondary outline-none transition-all text-[14px] text-on-surface">
-                  <option value="">-- No Driver Assigned --</option>
-                  {drivers.map(d => (
-                    <option key={d._id} value={d._id}>{d.userId?.name} (Lic: {d.licenseNumber})</option>
-                  ))}
+                  <option value="">-- No Driver Assigned (Unselected) --</option>
+                  {drivers
+                    .filter((d) => {
+                      if (editTruckForm.currentDriverId === d._id) return true;
+                      const isAssignedToOtherTruck = trucks.some(
+                        (t) =>
+                          t._id !== selectedTruck?._id &&
+                          (t.currentDriverId?._id === d._id || t.currentDriverId === d._id)
+                      );
+                      if (isAssignedToOtherTruck) return false;
+                      if (d.status === "ON_TRIP" || d.status === "ON_LEAVE" || d.activeTrip) return false;
+                      return true;
+                    })
+                    .map(d => (
+                      <option key={d._id} value={d._id}>{d.userId?.name} (Lic: {d.licenseNumber})</option>
+                    ))}
                 </select>
               </div>
 
@@ -538,15 +656,15 @@ export default function Trucks() {
       {/* Add Truck Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[450px] overflow-hidden">
-            <div className="px-6 py-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-lowest">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[450px] max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-lowest shrink-0">
               <h3 className="text-[18px] font-bold text-on-surface">Add New Truck</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low p-1.5 rounded-full transition-colors">
                 <span className="material-symbols-outlined text-[20px]">close</span>
               </button>
             </div>
             
-            <form onSubmit={handleCreateTruck} className="p-6 space-y-4">
+            <form onSubmit={handleCreateTruck} className="p-6 space-y-4 flex-1 overflow-y-auto">
               {submitError && (
                 <div className="p-3 bg-red-50 text-red-600 rounded-lg text-[13px] border border-red-100 flex items-center gap-2">
                    <span className="material-symbols-outlined text-[16px]">error</span>
@@ -555,8 +673,49 @@ export default function Trucks() {
               )}
               
               <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-on-surface-variant">Registration Number <span className="text-red-500">*</span></label>
-                <input required type="text" name="registrationNumber" value={newTruckForm.registrationNumber} onChange={handleFormChange} placeholder="e.g. MH-12-AB-1234" className="w-full h-10 px-3 bg-surface-container-lowest border border-outline-variant/50 rounded-lg focus:border-secondary focus:ring-1 focus:ring-secondary outline-none transition-all text-[14px] text-on-surface placeholder:text-on-surface-variant/50 uppercase font-mono" />
+                <div className="flex justify-between items-center">
+                  <label className="text-[13px] font-semibold text-on-surface-variant">Registration Number <span className="text-red-500">*</span></label>
+                  {newTruckValidation && (
+                    <span className={`text-[11px] font-semibold flex items-center gap-1 ${newTruckValidation.isValid ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      <span className="material-symbols-outlined text-[14px]">
+                        {newTruckValidation.isValid ? 'check_circle' : 'warning'}
+                      </span>
+                      {newTruckValidation.isValid ? 'Valid Format' : 'Rule Check'}
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input 
+                    required 
+                    type="text" 
+                    name="registrationNumber" 
+                    value={newTruckForm.registrationNumber} 
+                    onChange={handleFormChange} 
+                    placeholder="e.g. MH-12-AB-1234" 
+                    className={`w-full h-10 px-3 bg-surface-container-lowest border rounded-lg outline-none transition-all text-[14px] text-on-surface placeholder:text-on-surface-variant/50 uppercase font-mono pr-8 ${
+                      newTruckValidation
+                        ? newTruckValidation.isValid
+                          ? 'border-emerald-500 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500'
+                          : 'border-amber-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-400'
+                        : 'border-outline-variant/50 focus:border-secondary focus:ring-1 focus:ring-secondary'
+                    }`} 
+                  />
+                  {newTruckValidation && (
+                    <span className={`material-symbols-outlined text-[18px] absolute right-2.5 top-2.5 pointer-events-none ${newTruckValidation.isValid ? 'text-emerald-500' : 'text-amber-500'}`}>
+                      {newTruckValidation.isValid ? 'check_circle' : 'info'}
+                    </span>
+                  )}
+                </div>
+                {newTruckValidation ? (
+                  <p className={`text-[11.5px] leading-tight flex items-start gap-1 font-medium ${newTruckValidation.isValid ? 'text-emerald-600' : 'text-amber-700'}`}>
+                    <span>{newTruckValidation.isValid ? '✓' : '•'}</span>
+                    <span>{newTruckValidation.message}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-on-surface-variant/70">
+                    Rule format: SS-RR-XX-NNNN (e.g. MH-12-AB-1234) or YY-BH-NNNN-XX
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -646,7 +805,9 @@ export default function Trucks() {
                       <div className="flex justify-between items-center text-[13px]">
                         <div className="flex items-center gap-2 text-on-surface-variant">
                           <span className="material-symbols-outlined text-[16px]">person</span>
-                          {trip.driverId?.userId?.name || 'Unknown Driver'}
+                          {trip.driverIds && trip.driverIds.length > 0
+                            ? trip.driverIds.map(d => d.userId?.name || d.licenseNumber).join(', ')
+                            : trip.driverId?.userId?.name || 'Unknown Driver'}
                         </div>
                         <div className="font-bold text-on-surface font-mono">
                           ₹{trip.expectedRevenue?.toLocaleString()}

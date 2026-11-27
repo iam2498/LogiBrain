@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 export default function OwnerDashboard() {
   const { user, logout } = useAuth();
+  const { showInfo } = useToast();
   const [kpis, setKpis] = useState(null);
   const [overallReport, setOverallReport] = useState(null);
   const [activeTrips, setActiveTrips] = useState([]);
@@ -73,22 +75,22 @@ export default function OwnerDashboard() {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 space-y-1">
-          <Link to="/owner/dashboard" className="flex items-center gap-3 px-4 py-3 text-secondary bg-surface-container-highest/10 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/dashboard" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-secondary bg-surface-container-highest/10 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px] fill-icon">dashboard</span> Dashboard
           </Link>
-          <Link to="/owner/trips" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/trips" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px]">route</span> Trips
           </Link>
-          <Link to="/owner/trucks" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/trucks" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">local_shipping</span> Trucks
           </Link>
-          <Link to="/owner/drivers" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/drivers" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px]">person</span> Drivers
           </Link>
-          <Link to="/owner/expenses" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/expenses" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px] fill-icon">payments</span> Expenses
           </Link>
-          <Link to="/owner/reports" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/reports" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px]">assessment</span> Reports
           </Link>
         </nav>
@@ -127,11 +129,11 @@ export default function OwnerDashboard() {
               <span className="hidden sm:inline">New Dispatch</span>
             </Link>
             <div className="w-px h-8 bg-outline-variant/30 mx-2 hidden sm:block"></div>
-            <button onClick={() => alert("Notifications feature coming soon")} className="p-2.5 text-on-surface-variant hover:bg-surface-container-low hover:text-secondary rounded-full transition-colors relative">
+            <button onClick={() => showInfo("Notifications feature coming soon")} className="p-2.5 text-on-surface-variant hover:bg-surface-container-low hover:text-secondary rounded-full transition-colors relative cursor-pointer">
               <span className="material-symbols-outlined text-[22px]">notifications</span>
               <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-surface border-red-500"></span>
             </button>
-            <button onClick={() => alert("Settings feature coming soon")} className="p-2.5 text-on-surface-variant hover:bg-surface-container-low hover:text-secondary rounded-full transition-colors">
+            <button onClick={() => showInfo("Settings feature coming soon")} className="p-2.5 text-on-surface-variant hover:bg-surface-container-low hover:text-secondary rounded-full transition-colors cursor-pointer">
               <span className="material-symbols-outlined text-[22px]">settings</span>
             </button>
           </div>
@@ -356,8 +358,16 @@ export default function OwnerDashboard() {
                       <tr key={trip._id} className="bg-white hover:bg-blue-50/50 transition-colors group">
                         <td className="py-4 px-6">
                           <div className="flex flex-col">
-                            <span className="font-bold text-[14px] text-on-surface font-mono">{trip.truckId?.registrationNumber || 'N/A'}</span>
-                            <span className="text-[13px] text-on-surface-variant">{trip.driverId?.userId?.name || "Unknown Driver"}</span>
+                            <span className="font-bold text-[14px] text-on-surface font-mono">
+                              {trip.truckIds && trip.truckIds.length > 1
+                                ? trip.truckIds.map((t) => t.registrationNumber).join(", ")
+                                : trip.truckIds?.[0]?.registrationNumber || trip.truckId?.registrationNumber || "N/A"}
+                            </span>
+                            <span className="text-[13px] text-on-surface-variant">
+                              {trip.driverIds && trip.driverIds.length > 1
+                                ? trip.driverIds.map((d) => d.userId?.name || d.licenseNumber).join(", ")
+                                : trip.driverIds?.[0]?.userId?.name || trip.driverId?.userId?.name || "Unknown Driver"}
+                            </span>
                           </div>
                         </td>
                         <td className="py-4 px-6">
@@ -403,7 +413,7 @@ export default function OwnerDashboard() {
                         <span className="material-symbols-outlined text-[14px] text-blue-600">play_arrow</span>
                       </div>
                       <div>
-                        <p className="text-[14px] text-on-surface"><span className="font-bold">{activeTrips[0]?.driverId?.userId?.name || 'A driver'}</span> is en-route to {activeTrips[0]?.destination}</p>
+                        <p className="text-[14px] text-on-surface"><span className="font-bold">{activeTrips[0]?.driverIds?.[0]?.userId?.name || activeTrips[0]?.driverId?.userId?.name || 'A driver'}</span> is en-route to {activeTrips[0]?.destination}</p>
                         <p className="text-[12px] text-on-surface-variant mt-1 font-medium">Just now</p>
                       </div>
                     </div>

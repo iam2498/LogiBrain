@@ -57,9 +57,9 @@ const seedData = async () => {
 
     // Create Drivers
     const driversData = [
-      { name: "Driver One", email: "driver1@demo.com", phone: "9876543210", licenseNumber: "LIC1001" },
-      { name: "Driver Two", email: "driver2@demo.com", phone: "9876543211", licenseNumber: "LIC1002" },
-      { name: "Driver Three", email: "driver3@demo.com", phone: "9876543212", licenseNumber: "LIC1003" },
+      { name: "Driver One", email: "driver1@demo.com", phone: "9876543210", licenseNumber: "MH-12-2021-0001001" },
+      { name: "Driver Two", email: "driver2@demo.com", phone: "9876543211", licenseNumber: "MH-12-2022-0001002" },
+      { name: "Driver Three", email: "driver3@demo.com", phone: "9876543212", licenseNumber: "MH-14-2023-0001003" },
     ];
 
     const drivers = [];

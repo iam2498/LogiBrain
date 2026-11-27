@@ -159,8 +159,12 @@ exports.getAnalytics = async (req, res, next) => {
     const tripQuery = { ownerId };
     
     if (req.query.tripId) tripQuery._id = req.query.tripId;
-    if (req.query.truckId) tripQuery.truckId = req.query.truckId;
-    if (req.query.driverId) tripQuery.driverId = req.query.driverId;
+    if (req.query.truckId) {
+      tripQuery.$or = [{ truckIds: req.query.truckId }, { truckId: req.query.truckId }];
+    }
+    if (req.query.driverId) {
+      tripQuery.$or = [{ driverIds: req.query.driverId }, { driverId: req.query.driverId }];
+    }
     if (req.query.status) tripQuery.status = req.query.status;
     
     // Date filtering based on trip startDate
@@ -179,6 +183,12 @@ exports.getAnalytics = async (req, res, next) => {
 
     // 2. Fetch Trips
     const trips = await Trip.find(tripQuery)
+      .populate("truckIds", "registrationNumber")
+      .populate({
+        path: "driverIds",
+        select: "licenseNumber userId",
+        populate: { path: "userId", select: "name" },
+      })
       .populate("truckId", "registrationNumber")
       .populate("driverId", "userId licenseNumber");
       
@@ -246,6 +256,11 @@ exports.getTripReportPdf = async (req, res, next) => {
     
     // Fetch trip with population, scoped by owner
     const trip = await Trip.findOne({ _id: tripId, ownerId })
+      .populate("truckIds")
+      .populate({
+        path: "driverIds",
+        populate: { path: "userId", select: "name email phone" }
+      })
       .populate("truckId")
       .populate({
         path: "driverId",

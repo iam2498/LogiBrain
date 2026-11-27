@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 
 export default function Expenses() {
   const { user, logout } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [expenses, setExpenses] = useState([]);
   const [activeTrips, setActiveTrips] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,6 +66,7 @@ export default function Expenses() {
       setNewExpenseForm({
         tripId: "", category: "Fuel", amount: "", date: new Date().toISOString().split('T')[0], description: ""
       });
+      showSuccess("Expense added successfully!");
     } catch (error) {
       setSubmitError(error.response?.data?.message || "Failed to add expense");
     } finally {
@@ -76,8 +79,9 @@ export default function Expenses() {
     try {
       await axiosClient.delete(`/expenses/${expenseId}`);
       setExpenses(expenses.filter(e => e._id !== expenseId));
+      showSuccess("Expense deleted successfully!");
     } catch (error) {
-      alert("Failed to delete expense: " + (error.response?.data?.message || "Unknown error"));
+      showError("Failed to delete expense: " + (error.response?.data?.message || "Unknown error"));
     }
   };
 
@@ -104,22 +108,22 @@ export default function Expenses() {
         </div>
 
         <nav className="flex-1 overflow-y-auto custom-scrollbar px-3 space-y-1">
-          <Link to="/owner/dashboard" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/dashboard" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">dashboard</span> Dashboard
           </Link>
-          <Link to="/owner/trips" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/trips" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">route</span> Trips
           </Link>
-          <Link to="/owner/trucks" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/trucks" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">local_shipping</span> Trucks
           </Link>
-          <Link to="/owner/drivers" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
+          <Link to="/owner/drivers" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px]">
             <span className="material-symbols-outlined text-[20px]">person</span> Drivers
           </Link>
-          <Link to="/owner/expenses" className="flex items-center gap-3 px-4 py-3 text-secondary bg-surface-container-highest/10 rounded-lg hover:bg-surface-container-highest/20 transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/expenses" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-secondary bg-surface-container-highest/10 rounded-lg hover:bg-surface-container-highest/20 transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px] fill-icon">payments</span> Expenses
           </Link>
-          <Link to="/owner/reports" className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
+          <Link to="/owner/reports" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-3 px-4 py-3 text-on-primary-container hover:text-white hover:bg-surface-container-highest/5 rounded-lg transition-all font-medium text-[14px] cursor-pointer">
             <span className="material-symbols-outlined text-[20px]">assessment</span> Reports
           </Link>
         </nav>
@@ -162,10 +166,10 @@ export default function Expenses() {
               </button>
             </div>
             <div className="h-6 w-px bg-outline-variant/50 hidden sm:block"></div>
-            <div className="hidden sm:flex items-center gap-3">
-              <button onClick={() => setIsAddModalOpen(true)} className="bg-[#0a0a0a] text-white px-4 py-2 rounded-lg font-label-md text-[13px] font-medium hover:bg-black transition-transform duration-200 active:scale-95 flex items-center gap-2 shadow-sm">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setIsAddModalOpen(true)} className="bg-[#0a0a0a] text-white px-3 sm:px-4 py-2 rounded-lg font-label-md text-[13px] font-medium hover:bg-black transition-transform duration-200 active:scale-95 flex items-center gap-1.5 shadow-sm">
                 <span className="material-symbols-outlined text-[18px]">add</span>
-                Add Expense
+                <span>Add Expense</span>
               </button>
             </div>
           </div>
@@ -298,7 +302,7 @@ export default function Expenses() {
       {/* Add Expense Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 md:p-10">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[500px] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[500px] max-h-[92vh] flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-lowest shrink-0">
               <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-secondary text-[24px]">receipt_long</span>

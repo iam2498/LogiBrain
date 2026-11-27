@@ -94,7 +94,10 @@ exports.generateTripPdf = async (trip, expenses, res) => {
       const match = String(cap).match(/[\d.]+/);
       return match ? `${match[0]} Tons` : "N/A";
     };
-    const driverName = trip.driverId?.userId?.name || trip.driverId?.licenseNumber || "N/A";
+    const primaryDriver = (trip.driverIds && trip.driverIds[0]) || trip.driverId;
+    const driverName = (trip.driverIds && trip.driverIds.length > 1)
+      ? trip.driverIds.map(d => d.userId?.name || d.licenseNumber).join(', ')
+      : (primaryDriver?.userId?.name || primaryDriver?.licenseNumber || "N/A");
 
     // Build Donut Gradient
     let donutGradient = "";
@@ -146,15 +149,21 @@ exports.generateTripPdf = async (trip, expenses, res) => {
       completedDate: trip.status === "ON_TRIP" || trip.status === "ACTIVE" || !trip.actualEndDate ? "In progress" : formatDateTime(trip.actualEndDate),
       durationStr,
       truck: {
-        registrationNumber: trip.truckId?.registrationNumber || "N/A",
-        truckType: trip.truckId?.truckType || "N/A",
-        capacityStr: cleanCapacity(trip.truckId?.capacity)
+        registrationNumber: (trip.truckIds && trip.truckIds.length > 0)
+          ? trip.truckIds.map(t => t.registrationNumber).join(', ')
+          : (trip.truckId?.registrationNumber || "N/A"),
+        truckType: (trip.truckIds && trip.truckIds[0]?.truckType) || trip.truckId?.truckType || "N/A",
+        capacityStr: (trip.truckIds && trip.truckIds.length > 0)
+          ? `${trip.truckIds.reduce((sum, t) => sum + (parseFloat(t.capacity) || 0), 0)} Tons`
+          : cleanCapacity(trip.truckId?.capacity)
       },
       driver: {
-        initials: driverName.substring(0, 2).toUpperCase(),
+        initials: (primaryDriver?.userId?.name || driverName).substring(0, 2).toUpperCase(),
         name: driverName,
-        licenseNumber: trip.driverId?.licenseNumber || "N/A",
-        phone: trip.driverId?.userId?.phone || "N/A"
+        licenseNumber: (trip.driverIds && trip.driverIds.length > 0)
+          ? trip.driverIds.map(d => d.licenseNumber).join(', ')
+          : (trip.driverId?.licenseNumber || "N/A"),
+        phone: primaryDriver?.userId?.phone || "N/A"
       },
       hasExpenses: totalExpAmt > 0,
       donutGradient,
