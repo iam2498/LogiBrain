@@ -11,7 +11,7 @@ const seedAdmin = async () => {
 
     const adminEmail = "admin@logibrain.com";
     const adminPhone = "9999999999";
-    const adminPassword = "admin123";
+    const adminPassword = "admin@123";
 
     let admin = await User.findOne({ $or: [{ email: adminEmail }, { phone: adminPhone }] });
 

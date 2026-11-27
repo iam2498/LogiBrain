@@ -1,93 +1,149 @@
-# LogiBrain — Truck Fleet & Trip Management System
+# 🚛 LogiBrain — Fleet, Trip & Financial Management System
 
-A full-stack MERN application for managing truck fleets, trips, drivers, and expenses with role-based access control (Owner and Driver).
-
-## Tech Stack
-- **Frontend**: React (Vite), React Router, Tailwind CSS (v4), Recharts, Axios
-- **Backend**: Node.js, Express.js
-- **Database**: MongoDB & Mongoose
-- **Auth**: JWT (Access Token & httpOnly Refresh Token), bcrypt
-- **Validation**: Zod (Backend)
-
-## Features
-- **Owner Dashboard**: KPI metrics, charts for Revenue vs Expenses and Expense Breakdown.
-- **Driver Dashboard**: Assigned truck, current trip, end trip requests.
-- **Role-Based Access**: 
-  - Owners have full access to manage trucks, drivers, trips, and expenses.
-  - Drivers are strictly scoped to their own active trips and data.
-- **Trip Lifecycle**: PENDING → ACTIVE → DRIVER_ENDED → COMPLETED
-- **Trip Reports**: Auto-generated financial reports upon trip completion.
-
-## Project Structure
-This repository contains two main folders:
-- `backend/`: Node.js API server
-- `frontend/`: React Vite application
+LogiBrain is a full-stack MERN platform for transport businesses to manage multi-truck dispatches, drivers, real-time trip expenses, profit analytics, and PDF trip manifests with role-based portals for **Admins**, **Fleet Owners**, and **Drivers**.
 
 ---
 
-## Setup Instructions
+## ✨ Key Features
+
+### 🔐 Authentication & Role-Based Portals
+- **JWT + HTTP-Only Refresh Cookies:** Secure authentication (`POST /api/auth/login`, `/refresh`, `/logout`, `/register-owner`) with Zod validation and `bcryptjs` password hashing.
+- **Email/Phone Login & OTP Password Reset:** Supports sign-in with email or 10-digit phone number, plus Nodemailer-backed 6-digit OTP reset (`/forgot-password`).
+- **3 Role Portals:**
+  - **Admin (`/admin/*`):** Platform-wide KPIs, user activation/deactivation, fleet owner directory, system-wide trip monitoring, and monthly financial trends.
+  - **Owner (`/owner/*`):** Real-time dashboard, fleet & driver management, multi-truck trip dispatch, full expense ledger (add/edit/delete), interactive financial analytics, and PDF trip reports.
+  - **Driver (`/driver/*`):** Live trip assignment card, assigned truck details, expense logging on active legs, per-driver trip end requests, and personal trip history.
+
+### 🚚 Multi-Truck & Per-Driver Trip Lifecycle
+- **Unified Fleet & Crew Assignment:** Assign one or multiple trucks to a single trip, pair each truck with an individual driver, auto-fill default truck drivers, and validate combined truck capacity.
+- **Independent Per-Truck / Per-Driver Execution:**
+  - Each driver logs expenses attributed directly to their own paired truck and driver profile.
+  - When one driver finishes and requests trip end (`END_REQUESTED`), the trip remains `ON_TRIP` for remaining drivers until they finish too.
+  - Owners can accept individual truck end requests (`Accept End`) to release completed trucks/drivers early, or confirm final trip completion (`COMPLETED`) once all legs finish.
+- **Transactional Integrity:** Multi-document trip operations (dispatch, edits, completion, cancellation, deletion) run inside MongoDB ACID transactions on replica sets with automatic rollback compensation on standalone MongoDB instances.
+
+### 💰 Real-Time Financials, Expenses & PDF Reports
+- **Live Cashflow Synchronization:** Dashboard KPIs and Expense Breakdown charts aggregate active and completed trip expenses directly from the `Expense` collection while tracking realized revenue from completed trips.
+- **Full Expense Ledger:** View trip routes (`Source → Destination`), truck registration numbers, and the actual name + role of the person who added each expense, plus edit/delete support that automatically recalculates `TripReport` metrics.
+- **Branded PDF Trip Reports:** Generates downloadable A4 PDF invoices (`GET /api/reports/trip/:tripId/pdf`) via Puppeteer + Handlebars showing KPI summaries, every assigned truck-driver pair, expense distribution charts, and itemized expenses attributed by truck and person.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technologies |
+|---|---|
+| **Frontend** | React 19, Vite 8, Tailwind CSS v4, React Router v7, Axios, Recharts, Lucide React |
+| **Backend** | Node.js, Express 5, Mongoose 9, Zod 4, JSON Web Tokens, bcryptjs, Multer, Nodemailer |
+| **Database** | MongoDB |
+| **PDF Engine** | Puppeteer + Handlebars |
+
+---
+
+## 📁 Project Structure
+
+```text
+LogiBrain_v2/
+├── backend/
+│   ├── config/          # Environment and MongoDB connection config
+│   ├── controllers/     # Auth, Admin, Owner, Truck, Driver, Trip, Expense, Report handlers
+│   ├── middleware/      # JWT auth, role authorization, ownership scoping, error handling
+│   ├── models/          # Mongoose schemas (User, Truck, Driver, Trip, Expense, TripReport)
+│   ├── routes/          # Express route definitions (/api/auth, /trucks, /drivers, /trips, /expenses, /reports, /admin)
+│   ├── seed/            # Database seeders (seedAdmin.js, seedData.js)
+│   ├── services/        # Email (Nodemailer), file uploads (Multer), TripReport aggregation
+│   ├── utils/           # Transaction helper, PDF builder & Handlebars template, validators
+│   ├── validators/      # Zod request validation schemas
+│   ├── app.js           # Express app setup
+│   └── server.js        # Server entrypoint
+├── frontend/
+│   └── src/
+│       ├── api/         # Axios client with token refresh interceptor
+│       ├── components/  # Shared layout components (AdminLayout)
+│       ├── context/     # AuthContext, ToastContext
+│       ├── pages/       # auth/, admin/, owner/, driver/ views
+│       ├── routes/      # AppRoutes & ProtectedRoute role guards
+│       └── utils/       # Vehicle & license formatting/validation helpers
+└── QA_AUDIT/            # QA discovery, API, database, and financial audit reports
+```
+
+---
+
+## 🚀 Getting Started
 
 ### 1. Prerequisites
-- Node.js (v18+ recommended)
-- MongoDB running locally at `mongodb://localhost:27017` (or change the `MONGO_URI` in `.env`)
+- **Node.js** (v18+ recommended)
+- **MongoDB** running locally (`mongodb://localhost:27017`) or a MongoDB Atlas connection string
 
 ### 2. Backend Setup
 
-1. Open a terminal and navigate to the `backend` folder:
-   ```bash
-   cd backend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create a `.env` file from `.env.example`:
-   ```bash
-   cp .env.example .env
-   ```
-4. Run the seed script to populate demo data:
-   ```bash
-   node seed/seedData.js
-   ```
-   *(This will create a demo owner, trucks, drivers, and some initial trips/expenses)*
-5. Start the backend development server:
-   ```bash
-   npm run dev
-   ```
-   *(Server runs on port 5000)*
+```bash
+cd backend
+npm install
+cp .env.example .env
+```
+
+Configure `backend/.env` as needed (defaults work out of the box for local MongoDB on port `27017`):
+
+```env
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/fleetflow
+JWT_ACCESS_SECRET=your_access_secret
+JWT_REFRESH_SECRET=your_refresh_secret
+CLIENT_ORIGIN=http://localhost:5173
+```
+
+Seed the database (optional demo data and/or Admin account):
+
+```bash
+# Seed demo Owner, Trucks, Drivers, Trips, and Expenses
+node seed/seedData.js
+
+# Seed Admin account (admin@logibrain.com / admin@123)
+node seed/seedAdmin.js
+```
+
+Start the backend server (port `5000`):
+
+```bash
+node server.js
+# or with hot reload:
+npx nodemon server.js
+```
 
 ### 3. Frontend Setup
 
-1. Open a new terminal and navigate to the `frontend` folder:
-   ```bash
-   cd frontend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create a `.env` file from `.env.example`:
-   ```bash
-   cp .env.example .env
-   ```
-4. Start the frontend development server:
-   ```bash
-   npm run dev
-   ```
-   *(App runs on http://localhost:5173)*
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Open **http://localhost:5173** in your browser.
 
 ---
 
-## Demo Credentials
+## 🔑 Default / Seeded Credentials
 
-The `seedData.js` script provisions the following accounts:
+| Role | Email | Password | Seed Script |
+|---|---|---|---|
+| **Admin** | `admin@logibrain.com` | `admin@123` | `node seed/seedAdmin.js` |
+| **Owner** | `owner@demo.com` | `password123` | `node seed/seedData.js` |
+| **Driver** | `driver1@demo.com` | `password123` | `node seed/seedData.js` |
 
-**Owner:**
-- Email: `owner@demo.com`
-- Password: `password123`
+> Fleet Owners can also register directly from `/register` and create driver accounts from the Owner portal.
 
-**Driver:**
-- Email: `driver1@demo.com`
-- Password: `password123`
+---
 
-*(You can also register a new Owner account from the UI)*
+## 🌐 Core API Modules
+
+| Base Path | Purpose |
+|---|---|
+| `/api/auth` | Owner registration, login, token refresh, logout, password reset, current profile |
+| `/api/trucks` | Fleet vehicle CRUD, manual status updates, truck trip/expense history |
+| `/api/drivers` | Driver profile creation, updates, availability status |
+| `/api/trips` | Multi-truck trip dispatch, updates, per-driver end requests, owner confirmation, cancellation, history |
+| `/api/expenses` | Trip expense creation (with optional receipt upload), listing, editing, deletion |
+| `/api/reports` | Dashboard KPIs, overall/analytics reports, per-truck/driver/trip reports, PDF generation |
+| `/api/admin` | Admin stats, user activation toggles, owner directory, platform-wide trips & trends |
